@@ -7,7 +7,6 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from dakera import AsyncDakeraClient, DakeraClient
-from dakera.models import TextDocument
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
@@ -28,8 +27,8 @@ class DakeraVectorStore(VectorStore):
         texts_list = list(texts)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
-        fill = metadatas or [{}] * len(texts_list)
-        docs: list[TextDocument | dict[str, Any]] = [
+        fill = metadatas or [{} for _ in texts_list]
+        docs: list[dict[str, Any]] = [
             {"id": did, "text": t, "metadata": m or {}}
             for did, t, m in zip(ids, texts_list, fill)
         ]
@@ -61,8 +60,8 @@ class DakeraVectorStore(VectorStore):
         texts_list = list(texts)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
-        fill = metadatas or [{}] * len(texts_list)
-        docs: list[TextDocument | dict[str, Any]] = [
+        fill = metadatas or [{} for _ in texts_list]
+        docs: list[dict[str, Any]] = [
             {"id": did, "text": t, "metadata": m or {}}
             for did, t, m in zip(ids, texts_list, fill)
         ]

@@ -92,8 +92,8 @@ memory = DakeraMemory(
     api_url="http://localhost:3300",
     api_key="dk-mykey",
     agent_id="chat-agent",
-    top_k=5,        # memories to recall per turn
-    importance=0.7, # importance score for stored memories
+    recall_k=5,      # memories to recall per turn
+    importance=0.7,  # importance score for stored memories
 )
 
 chain = ConversationChain(
@@ -117,7 +117,7 @@ print(response)  # "You mentioned you were building a chatbot."
 | `api_url` | `str` | — | Dakera server URL |
 | `api_key` | `str` | `""` | Dakera API key |
 | `agent_id` | `str` | — | Agent identifier for memory namespacing |
-| `top_k` | `int` | `5` | Memories to surface per turn |
+| `recall_k` | `int` | `5` | Memories to surface per turn |
 | `min_importance` | `float` | `0.0` | Minimum importance threshold for recall |
 | `importance` | `float` | `0.7` | Importance assigned to stored memories |
 | `memory_key` | `str` | `"history"` | Key injected into the prompt |
