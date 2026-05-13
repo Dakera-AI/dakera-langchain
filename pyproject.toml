@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "langchain-dakera"
+version = "0.1.0"
+description = "LangChain integration for the Dakera AI memory platform"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Dakera Team"}]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+keywords = ["langchain", "dakera", "memory", "vector", "ai", "rag"]
+dependencies = ["dakera>=0.8.6", "langchain-core>=0.1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "responses>=0.23.0",
+       "ruff>=0.1.0", "langchain-core>=0.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/dakera-ai/dakera-langchain"
+Documentation = "https://docs.dakera.ai/integrations/langchain"
+Repository = "https://github.com/dakera-ai/dakera-langchain"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+langchain_dakera = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
