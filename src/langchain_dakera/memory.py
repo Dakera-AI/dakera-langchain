@@ -33,7 +33,9 @@ class DakeraMemory(BaseMemory):
     @property
     def _dakera_client(self) -> DakeraClient:
         if self._client is None:
-            raise RuntimeError("DakeraMemory: client was not initialized; model_post_init may not have run")
+            raise RuntimeError(
+                "DakeraMemory: client was not initialized; model_post_init may not have run"
+            )
         return self._client
 
     @property
