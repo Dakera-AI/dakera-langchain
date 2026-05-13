@@ -27,8 +27,11 @@ class DakeraVectorStore(VectorStore):
         texts_list = list(texts)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
-        docs = [{"id": did, "text": t, "metadata": m or {}}
-                for did, t, m in zip(ids, texts_list, metadatas or [{}] * len(texts_list))]
+        fill = metadatas or [{}] * len(texts_list)
+        docs: list[dict[str, Any]] = [
+            {"id": did, "text": t, "metadata": m or {}}
+            for did, t, m in zip(ids, texts_list, fill)
+        ]
         self._client.upsert_text(self._namespace, docs)
         return ids
 
@@ -57,8 +60,11 @@ class DakeraVectorStore(VectorStore):
         texts_list = list(texts)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
-        docs = [{"id": did, "text": t, "metadata": m or {}}
-                for did, t, m in zip(ids, texts_list, metadatas or [{}] * len(texts_list))]
+        fill = metadatas or [{}] * len(texts_list)
+        docs: list[dict[str, Any]] = [
+            {"id": did, "text": t, "metadata": m or {}}
+            for did, t, m in zip(ids, texts_list, fill)
+        ]
         await self._async_client.upsert_text(self._namespace, docs)
         return ids
 
