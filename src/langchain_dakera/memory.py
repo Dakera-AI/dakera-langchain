@@ -42,10 +42,10 @@ class DakeraMemory(BaseMemory):
         query = self._get_query(inputs)
         if not query:
             return {self.memory_key: ""}
-        memories = self._client.recall(
+        response = self._client.recall(
             self.agent_id, query=query, top_k=self.recall_k,
             min_importance=self.min_importance if self.min_importance > 0 else None)
-        history = "\n".join(m["content"] if isinstance(m, dict) else str(m) for m in memories)
+        history = "\n".join(m["content"] if isinstance(m, dict) else str(m) for m in response.memories)
         return {self.memory_key: history}
 
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
