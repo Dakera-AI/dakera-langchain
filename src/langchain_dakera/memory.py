@@ -1,14 +1,16 @@
 """DakeraMemory — LangChain memory backed by the Dakera AI memory platform."""
 
 from __future__ import annotations
+
 from typing import Any
+
 from dakera import DakeraClient
 from pydantic import Field
 
 try:
     from langchain_core.memory import BaseMemory
 except ImportError:
-    from pydantic import BaseModel as BaseMemory  # type: ignore[assignment]
+    from pydantic import BaseModel as BaseMemory
 
 
 class DakeraMemory(BaseMemory):
@@ -45,7 +47,7 @@ class DakeraMemory(BaseMemory):
         memories = self._client.recall(
             self.agent_id, query=query, top_k=self.recall_k,
             min_importance=self.min_importance if self.min_importance > 0 else None)
-        history = "\n".join(m["content"] if isinstance(m, dict) else str(m) for m in memories)
+        history = "\n".join(m.content for m in memories.memories)
         return {self.memory_key: history}
 
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
