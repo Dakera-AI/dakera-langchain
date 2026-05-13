@@ -28,7 +28,7 @@ class DakeraVectorStore(VectorStore):
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
         fill = metadatas or [{} for _ in texts_list]
-        docs: list[dict[str, Any]] = [
+        docs: list[Any] = [
             {"id": did, "text": t, "metadata": m or {}}
             for did, t, m in zip(ids, texts_list, fill)
         ]
@@ -61,7 +61,7 @@ class DakeraVectorStore(VectorStore):
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
         fill = metadatas or [{} for _ in texts_list]
-        docs: list[dict[str, Any]] = [
+        docs: list[Any] = [
             {"id": did, "text": t, "metadata": m or {}}
             for did, t, m in zip(ids, texts_list, fill)
         ]
