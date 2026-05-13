@@ -3,8 +3,10 @@
 from __future__ import annotations
 import uuid
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Union
 from dakera import AsyncDakeraClient, DakeraClient
+if TYPE_CHECKING:
+    from dakera.models import TextDocument
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
@@ -25,8 +27,9 @@ class DakeraVectorStore(VectorStore):
         texts_list = list(texts)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
-        docs = [{"id": did, "text": t, "metadata": m or {}}
-                for did, t, m in zip(ids, texts_list, metadatas or [{}] * len(texts_list))]
+        docs: list[Union["TextDocument", dict[str, Any]]] = [
+            {"id": did, "text": t, "metadata": m or {}}
+            for did, t, m in zip(ids, texts_list, metadatas or [{}] * len(texts_list))]
         self._client.upsert_text(self._namespace, docs)
         return ids
 
@@ -50,9 +53,10 @@ class DakeraVectorStore(VectorStore):
         texts_list = list(texts)
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in texts_list]
-        docs = [{"id": did, "text": t, "metadata": m or {}}
-                for did, t, m in zip(ids, texts_list, metadatas or [{}] * len(texts_list))]
-        await self._async_client.upsert_text(self._namespace, docs)
+        docs2: list[Union["TextDocument", dict[str, Any]]] = [
+            {"id": did, "text": t, "metadata": m or {}}
+            for did, t, m in zip(ids, texts_list, metadatas or [{}] * len(texts_list))]
+        await self._async_client.upsert_text(self._namespace, docs2)
         return ids
 
     async def asimilarity_search(self, query: str, k: int = 4,
