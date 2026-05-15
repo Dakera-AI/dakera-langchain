@@ -200,8 +200,8 @@ print(answer)
 
 - [Dakera Server](https://github.com/Dakera-AI/dakera-deploy) — self-hosted memory server
 - [Dakera Python SDK](https://github.com/Dakera-AI/dakera-py) — low-level API client
-- [Documentation](https://dakera.ai/integrations/langchain)
-- [All integrations](https://github.com/Dakera-AI/dakera-integrations)
+- [Integration guide](https://dakera.ai/integrations/langchain.html) — full setup walkthrough
+- [All integrations](https://dakera.ai/integrations/)
 
 ---
 

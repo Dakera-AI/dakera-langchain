@@ -30,8 +30,7 @@ class DakeraMemory(BaseMemory):
     def model_post_init(self, __context: Any) -> None:
         self._client = DakeraClient(self.api_url, api_key=self.api_key)
 
-    @property
-    def _dakera_client(self) -> DakeraClient:
+    def _get_client(self) -> DakeraClient:
         if self._client is None:
             raise RuntimeError(
                 "DakeraMemory: client was not initialized; model_post_init may not have run"
@@ -51,7 +50,7 @@ class DakeraMemory(BaseMemory):
         query = self._get_query(inputs)
         if not query:
             return {self.memory_key: ""}
-        memories = self._dakera_client.recall(
+        memories = self._get_client().recall(
             self.agent_id, query=query, top_k=self.recall_k,
             min_importance=self.min_importance if self.min_importance > 0 else None)
         history = "\n".join(m.content for m in memories.memories)
@@ -60,9 +59,9 @@ class DakeraMemory(BaseMemory):
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
         human = str(next(iter(inputs.values()), ""))
         ai = str(next(iter(outputs.values()), ""))
-        self._dakera_client.store_memory(self.agent_id,
-                                         content=f"Human: {human}\nAI: {ai}",
-                                         memory_type="episodic", importance=self.importance)
+        self._get_client().store_memory(self.agent_id,
+                                        content=f"Human: {human}\nAI: {ai}",
+                                        memory_type="episodic", importance=self.importance)
 
     def clear(self) -> None:
         """No-op: Dakera memories are persistent by design."""
