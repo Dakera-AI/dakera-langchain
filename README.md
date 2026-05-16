@@ -5,6 +5,7 @@
 [![Downloads](https://img.shields.io/pypi/dm/langchain-dakera)](https://pypi.org/project/langchain-dakera/)
 [![Python](https://img.shields.io/pypi/pyversions/langchain-dakera)](https://pypi.org/project/langchain-dakera/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-dakera.ai-D4A843)](https://dakera.ai/docs)
 
 **Drop-in LangChain components backed by [Dakera](https://github.com/Dakera-AI/dakera-deploy) — persistent agent memory and server-side RAG with no local embedding model.**
 
