@@ -11,6 +11,7 @@ Usage:
 import os
 
 from langchain_dakera import DakeraMemory
+from langchain_dakera.agents import DakeraAgentTools
 from langchain_dakera.knowledge_graph import DakeraKnowledgeGraph
 
 api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3300")
@@ -48,8 +49,6 @@ results = memory.load_memory_variables(
 print(f"High-importance memories:\n{results['history']}")
 
 print("\n--- Agent tools: stats ---")
-from langchain_dakera.agents import DakeraAgentTools
-
 agent = DakeraAgentTools(
     api_url=api_url,
     api_key=api_key,
