@@ -158,7 +158,10 @@ class DakeraMemory(BaseMemory):
                 kwargs["tags"] = tags
             result = client.recall(self.agent_id, query=q, **kwargs)
             results.append(
-                [{"id": m.id, "content": m.content, "importance": m.importance} for m in result.memories]
+                [
+                    {"id": m.id, "content": m.content, "importance": m.importance}
+                    for m in result.memories
+                ]
             )
         return results
 
@@ -172,7 +175,9 @@ class DakeraMemory(BaseMemory):
 
     def update_importance(self, memory_id: str, importance: float) -> None:
         """Update the importance score of a memory."""
-        self._get_client().update_importance(self.agent_id, memory_id=memory_id, importance=importance)
+        self._get_client().update_importance(
+            self.agent_id, memory_id=memory_id, importance=importance
+        )
 
     def search(
         self,

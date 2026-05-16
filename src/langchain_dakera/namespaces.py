@@ -26,9 +26,7 @@ class DakeraNamespaceManager:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Create a new namespace."""
-        return self._client.create_namespace(
-            name, dimension=dimension, metric=metric, **kwargs
-        )
+        return self._client.create_namespace(name, dimension=dimension, metric=metric, **kwargs)
 
     def get(self, name: str) -> dict[str, Any]:
         """Get namespace details."""

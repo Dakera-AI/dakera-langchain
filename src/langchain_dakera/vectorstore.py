@@ -43,8 +43,7 @@ class DakeraVectorStore(VectorStore):
             ids = [str(uuid.uuid4()) for _ in texts_list]
         fill = metadatas or [{} for _ in texts_list]
         docs: list[Any] = [
-            {"id": did, "text": t, "metadata": m or {}}
-            for did, t, m in zip(ids, texts_list, fill)
+            {"id": did, "text": t, "metadata": m or {}} for did, t, m in zip(ids, texts_list, fill)
         ]
         self._client.upsert_text(self._namespace, docs)
         return ids
@@ -168,8 +167,7 @@ class DakeraVectorStore(VectorStore):
             ids = [str(uuid.uuid4()) for _ in texts_list]
         fill = metadatas or [{} for _ in texts_list]
         docs: list[Any] = [
-            {"id": did, "text": t, "metadata": m or {}}
-            for did, t, m in zip(ids, texts_list, fill)
+            {"id": did, "text": t, "metadata": m or {}} for did, t, m in zip(ids, texts_list, fill)
         ]
         await self._async_client.upsert_text(self._namespace, docs)
         return ids

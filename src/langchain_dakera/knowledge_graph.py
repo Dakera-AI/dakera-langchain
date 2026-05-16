@@ -38,7 +38,9 @@ class DakeraKnowledgeGraph:
 
     def link(self, memory_id: str, entity_id: str, relation: str = "relates_to") -> None:
         """Link a memory to an entity in the knowledge graph."""
-        self._client.memory_link(self._agent_id, memory_id=memory_id, entity_id=entity_id, relation=relation)
+        self._client.memory_link(
+            self._agent_id, memory_id=memory_id, entity_id=entity_id, relation=relation
+        )
 
     def export(self) -> dict[str, Any]:
         """Export the full knowledge graph for this agent."""
