@@ -101,15 +101,15 @@ class DakeraVectorStore(VectorStore):
             filter: Metadata filter expression.
             alpha: Balance between vector (1.0) and keyword (0.0) search.
         """
-        response = self._client.hybrid_search(
-            self._namespace, text=query, top_k=k, filter=filter, alpha=alpha, **kwargs
+        results = self._client.hybrid_search(
+            self._namespace, query=query, top_k=k, filter=filter, vector_weight=alpha, **kwargs
         )
         return [
             Document(
-                page_content=r.text or "",
+                page_content=r.content or "",
                 metadata={**(r.metadata or {}), "score": r.score, "id": r.id},
             )
-            for r in response.results
+            for r in results
         ]
 
     def fulltext_search(
@@ -120,15 +120,15 @@ class DakeraVectorStore(VectorStore):
         filter: dict[str, Any] | None = None,
     ) -> list[Document]:
         """BM25-only fulltext search."""
-        response = self._client.fulltext_search(
+        results = self._client.fulltext_search(
             self._namespace, query=query, top_k=k, filter=filter
         )
         return [
             Document(
-                page_content=r.text or "",
+                page_content=r.content or "",
                 metadata={**(r.metadata or {}), "score": r.score, "id": r.id},
             )
-            for r in response.results
+            for r in results
         ]
 
     def batch_search(
@@ -200,15 +200,15 @@ class DakeraVectorStore(VectorStore):
         **kwargs: Any,
     ) -> list[Document]:
         """Async combined vector + BM25 search."""
-        response = await self._async_client.hybrid_search(
-            self._namespace, text=query, top_k=k, filter=filter, alpha=alpha, **kwargs
+        results = await self._async_client.hybrid_search(
+            self._namespace, query=query, top_k=k, filter=filter, vector_weight=alpha, **kwargs
         )
         return [
             Document(
-                page_content=r.text or "",
+                page_content=r.content or "",
                 metadata={**(r.metadata or {}), "score": r.score, "id": r.id},
             )
-            for r in response.results
+            for r in results
         ]
 
     @classmethod

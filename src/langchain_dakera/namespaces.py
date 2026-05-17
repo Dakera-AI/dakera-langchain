@@ -21,29 +21,36 @@ class DakeraNamespaceManager:
         self,
         name: str,
         *,
-        dimension: int | None = None,
-        metric: str | None = None,
+        dimensions: int | None = None,
+        index_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Create a new namespace."""
-        return self._client.create_namespace(name, dimension=dimension, metric=metric, **kwargs)
+        result = self._client.create_namespace(
+            name, dimensions=dimensions, index_type=index_type, metadata=metadata, **kwargs
+        )
+        return {
+            "name": result.name,
+            "dimensions": result.dimensions,
+            "vector_count": result.vector_count,
+        }
 
     def get(self, name: str) -> dict[str, Any]:
         """Get namespace details."""
         result = self._client.get_namespace(name)
         return {
             "name": result.name,
-            "dimension": result.dimension,
-            "metric": result.metric,
+            "dimensions": result.dimensions,
             "vector_count": result.vector_count,
         }
 
-    def list(self) -> list[dict[str, Any]]:
+    def list_namespaces(self) -> list[dict[str, Any]]:
         """List all namespaces."""
-        result = self._client.list_namespaces()
+        namespaces = self._client.list_namespaces()
         return [
-            {"name": ns.name, "dimension": ns.dimension, "vector_count": ns.vector_count}
-            for ns in result.namespaces
+            {"name": ns.name, "dimensions": ns.dimensions, "vector_count": ns.vector_count}
+            for ns in namespaces
         ]
 
     def configure(self, name: str, **kwargs: Any) -> None:
@@ -56,4 +63,11 @@ class DakeraNamespaceManager:
 
     def stats(self, name: str) -> dict[str, Any]:
         """Get index statistics for a namespace."""
-        return self._client.get_index_stats(name)
+        result = self._client.get_index_stats(name)
+        return {
+            "total_vectors": result.total_vectors,
+            "dimensions": result.dimensions,
+            "index_type": result.index_type,
+            "memory_usage_bytes": result.memory_usage_bytes,
+            "disk_usage_bytes": result.disk_usage_bytes,
+        }

@@ -18,34 +18,71 @@ class DakeraKnowledgeGraph:
         self._client = DakeraClient(api_url, api_key=api_key)
         self._agent_id = agent_id
 
-    def query(self, query: str, **kwargs: Any) -> dict[str, Any]:
-        """Query the knowledge graph with natural language."""
-        result = self._client.knowledge_query(self._agent_id, query=query, **kwargs)
-        return {"nodes": result.nodes, "edges": result.edges}
+    def query(self, **kwargs: Any) -> dict[str, Any]:
+        """Query the knowledge graph with filter parameters.
 
-    def traverse(
-        self,
-        entity_id: str,
-        *,
-        depth: int = 2,
-        direction: str = "both",
-    ) -> dict[str, Any]:
-        """Traverse the graph from an entity node."""
+        Keyword args are passed to ``knowledge_query`` (e.g. root_id, edge_type,
+        min_weight, max_depth, limit).
+        """
+        result = self._client.knowledge_query(self._agent_id, **kwargs)
+        return {
+            "edges": [
+                {
+                    "id": e.id,
+                    "source_id": e.source_id,
+                    "target_id": e.target_id,
+                    "edge_type": e.edge_type.value,
+                    "weight": e.weight,
+                }
+                for e in result.edges
+            ],
+            "node_count": result.node_count,
+            "edge_count": result.edge_count,
+        }
+
+    def find_path(self, from_id: str, to_id: str) -> dict[str, Any]:
+        """Find shortest path between two memory IDs."""
         result = self._client.knowledge_path(
-            self._agent_id, source=entity_id, depth=depth, direction=direction
+            self._agent_id, from_id=from_id, to_id=to_id
         )
-        return {"nodes": result.nodes, "edges": result.edges}
+        return {
+            "path": result.path,
+            "hop_count": result.hop_count,
+            "from_id": result.from_id,
+            "to_id": result.to_id,
+        }
 
-    def link(self, memory_id: str, entity_id: str, relation: str = "relates_to") -> None:
-        """Link a memory to an entity in the knowledge graph."""
-        self._client.memory_link(
-            self._agent_id, memory_id=memory_id, entity_id=entity_id, relation=relation
+    def link(
+        self, source_id: str, target_id: str, edge_type: str = "linked_by"
+    ) -> dict[str, Any]:
+        """Link two memories in the knowledge graph."""
+        result = self._client.memory_link(
+            source_id=source_id, target_id=target_id, edge_type=edge_type
         )
+        return {
+            "edge_id": result.edge.id,
+            "source_id": result.edge.source_id,
+            "target_id": result.edge.target_id,
+            "edge_type": result.edge.edge_type.value,
+        }
 
-    def export(self) -> dict[str, Any]:
-        """Export the full knowledge graph for this agent."""
-        result = self._client.knowledge_export(self._agent_id)
-        return {"nodes": result.nodes, "edges": result.edges}
+    def export(self, format: str = "json") -> dict[str, Any]:
+        """Export the knowledge graph for this agent."""
+        result = self._client.knowledge_export(self._agent_id, format=format)
+        return {
+            "edges": [
+                {
+                    "id": e.id,
+                    "source_id": e.source_id,
+                    "target_id": e.target_id,
+                    "edge_type": e.edge_type.value,
+                    "weight": e.weight,
+                }
+                for e in result.edges
+            ],
+            "node_count": result.node_count,
+            "edge_count": result.edge_count,
+        }
 
     def summarize(self) -> dict[str, Any]:
         """Generate a summary of the knowledge graph."""
@@ -57,10 +94,8 @@ class DakeraKnowledgeGraph:
 
     def build(self) -> dict[str, Any]:
         """Build/rebuild the knowledge graph from agent memories."""
-        result = self._client.knowledge_graph(self._agent_id)
-        return {"nodes": result.nodes, "edges": result.edges}
+        return self._client.knowledge_graph(self._agent_id)
 
     def full_graph(self) -> dict[str, Any]:
         """Get the complete knowledge graph with all relationships."""
-        result = self._client.full_knowledge_graph(self._agent_id)
-        return {"nodes": result.nodes, "edges": result.edges}
+        return self._client.full_knowledge_graph(self._agent_id)

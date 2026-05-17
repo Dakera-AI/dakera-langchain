@@ -120,22 +120,24 @@ class DakeraMemory(BaseMemory):
         *,
         top_k: int | None = None,
         min_importance: float | None = None,
-        tags: list[str] | None = None,
         memory_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Recall memories with filtering by tags, type, and importance."""
+        """Recall memories with filtering by type and importance."""
         kwargs: dict[str, Any] = {}
         if top_k is not None:
             kwargs["top_k"] = top_k
         if min_importance is not None:
             kwargs["min_importance"] = min_importance
-        if tags:
-            kwargs["tags"] = tags
         if memory_type:
             kwargs["memory_type"] = memory_type
         result = self._get_client().recall(self.agent_id, query=query, **kwargs)
         return [
-            {"id": m.id, "content": m.content, "importance": m.importance, "tags": m.tags}
+            {
+                "id": m.id,
+                "content": m.content,
+                "importance": m.importance,
+                "metadata": m.metadata,
+            }
             for m in result.memories
         ]
 
@@ -145,7 +147,6 @@ class DakeraMemory(BaseMemory):
         *,
         top_k: int = 5,
         min_importance: float | None = None,
-        tags: list[str] | None = None,
     ) -> list[list[dict[str, Any]]]:
         """Batch recall across multiple queries."""
         client = self._get_client()
@@ -154,8 +155,6 @@ class DakeraMemory(BaseMemory):
             kwargs: dict[str, Any] = {"top_k": top_k}
             if min_importance is not None:
                 kwargs["min_importance"] = min_importance
-            if tags:
-                kwargs["tags"] = tags
             result = client.recall(self.agent_id, query=q, **kwargs)
             results.append(
                 [
@@ -167,16 +166,17 @@ class DakeraMemory(BaseMemory):
 
     def batch_forget(self, memory_ids: list[str]) -> None:
         """Forget multiple memories by ID."""
-        self._get_client().batch_forget(self.agent_id, memory_ids=memory_ids)
+        for mid in memory_ids:
+            self._get_client().forget(self.agent_id, mid)
 
     def forget(self, memory_id: str) -> None:
         """Forget a single memory by ID."""
-        self._get_client().forget(self.agent_id, memory_id=memory_id)
+        self._get_client().forget(self.agent_id, memory_id)
 
     def update_importance(self, memory_id: str, importance: float) -> None:
         """Update the importance score of a memory."""
         self._get_client().update_importance(
-            self.agent_id, memory_id=memory_id, importance=importance
+            self.agent_id, memory_ids=[memory_id], importance=importance
         )
 
     def search(
@@ -185,18 +185,20 @@ class DakeraMemory(BaseMemory):
         *,
         top_k: int = 10,
         min_importance: float | None = None,
-        tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search across agent memories."""
         kwargs: dict[str, Any] = {"top_k": top_k}
         if min_importance is not None:
             kwargs["min_importance"] = min_importance
-        if tags:
-            kwargs["tags"] = tags
         result = self._get_client().search_memories(self.agent_id, query=query, **kwargs)
         return [
-            {"id": m.id, "content": m.content, "importance": m.importance, "score": m.score}
-            for m in result.memories
+            {
+                "id": m.get("id", ""),
+                "content": m.get("content", ""),
+                "importance": m.get("importance", 0.0),
+                "score": m.get("score", 0.0),
+            }
+            for m in result
         ]
 
     def consolidate(self) -> Any:
