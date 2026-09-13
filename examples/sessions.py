@@ -4,7 +4,7 @@ Demonstrates starting a session, storing memories within it, and
 ending with a summary. Sessions group related memories together.
 
 Usage:
-    export DAKERA_API_URL="http://localhost:3300"
+    export DAKERA_API_URL="http://localhost:3000"
     python sessions.py
 """
 
@@ -13,7 +13,7 @@ import os
 from langchain_dakera import DakeraMemory
 from langchain_dakera.sessions import DakeraSessionManager
 
-api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3300")
+api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3000")
 api_key = os.environ.get("DAKERA_API_KEY", "")
 
 sessions = DakeraSessionManager(

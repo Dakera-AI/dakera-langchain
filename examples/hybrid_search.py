@@ -4,7 +4,7 @@ Demonstrates combining semantic vector search with keyword-based
 full-text search for better retrieval.
 
 Usage:
-    export DAKERA_API_URL="http://localhost:3300"
+    export DAKERA_API_URL="http://localhost:3000"
     python hybrid_search.py
 """
 
@@ -12,7 +12,7 @@ import os
 
 from langchain_dakera.vectorstore import DakeraVectorStore
 
-api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3300")
+api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3000")
 api_key = os.environ.get("DAKERA_API_KEY", "")
 
 store = DakeraVectorStore(
