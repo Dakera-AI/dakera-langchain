@@ -23,7 +23,7 @@ Dakera is a self-hosted memory server. Spin it up with Docker:
 ```bash
 docker run -d \
   --name dakera \
-  -p 3300:3300 \
+  -p 3000:3000 \
   -e DAKERA_ROOT_API_KEY=dk-mykey \
   ghcr.io/dakera-ai/dakera:latest
 ```
@@ -37,7 +37,7 @@ curl -sSfL https://raw.githubusercontent.com/Dakera-AI/dakera-deploy/main/docker
 DAKERA_API_KEY=dk-mykey docker compose up -d
 
 # Verify it's running
-curl http://localhost:3300/health
+curl http://localhost:3000/health
 ```
 
 > Full deployment guide: [github.com/Dakera-AI/dakera-deploy](https://github.com/Dakera-AI/dakera-deploy)
@@ -55,14 +55,14 @@ from langchain_dakera import DakeraMemory, DakeraVectorStore
 
 # Persistent conversation memory
 memory = DakeraMemory(
-    api_url="http://localhost:3300",
+    api_url="http://localhost:3000",
     api_key="dk-mykey",
     agent_id="my-agent",
 )
 
 # RAG vector store — no local embedding model needed
 vectorstore = DakeraVectorStore(
-    api_url="http://localhost:3300",
+    api_url="http://localhost:3000",
     api_key="dk-mykey",
     namespace="my-docs",
 )
@@ -92,7 +92,7 @@ from langchain_openai import ChatOpenAI
 from langchain_dakera import DakeraMemory
 
 memory = DakeraMemory(
-    api_url="http://localhost:3300",
+    api_url="http://localhost:3000",
     api_key="dk-mykey",
     agent_id="chat-agent",
     recall_k=5,      # memories to recall per turn
@@ -147,7 +147,7 @@ chunks = splitter.split_documents(docs)
 
 # Index into Dakera (server handles embedding)
 vectorstore = DakeraVectorStore(
-    api_url="http://localhost:3300",
+    api_url="http://localhost:3000",
     api_key="dk-mykey",
     namespace="my-docs",
 )
@@ -162,7 +162,7 @@ from langchain_openai import ChatOpenAI
 from langchain_dakera import DakeraVectorStore
 
 vectorstore = DakeraVectorStore(
-    api_url="http://localhost:3300",
+    api_url="http://localhost:3000",
     api_key="dk-mykey",
     namespace="my-docs",
 )

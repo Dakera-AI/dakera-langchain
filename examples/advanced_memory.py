@@ -4,7 +4,7 @@ Demonstrates importance levels, tags, memory types, TTL, and
 the consolidation/deduplication utilities.
 
 Usage:
-    export DAKERA_API_URL="http://localhost:3300"
+    export DAKERA_API_URL="http://localhost:3000"
     python advanced_memory.py
 """
 
@@ -14,7 +14,7 @@ from langchain_dakera import DakeraMemory
 from langchain_dakera.agents import DakeraAgentTools
 from langchain_dakera.knowledge_graph import DakeraKnowledgeGraph
 
-api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3300")
+api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3000")
 api_key = os.environ.get("DAKERA_API_KEY", "")
 
 memory = DakeraMemory(

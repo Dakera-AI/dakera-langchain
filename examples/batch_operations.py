@@ -4,7 +4,7 @@ Demonstrates batch recall (multiple queries at once) and batch
 storage for efficient bulk operations.
 
 Usage:
-    export DAKERA_API_URL="http://localhost:3300"
+    export DAKERA_API_URL="http://localhost:3000"
     python batch_operations.py
 """
 
@@ -12,7 +12,7 @@ import os
 
 from langchain_dakera import DakeraMemory
 
-api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3300")
+api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3000")
 api_key = os.environ.get("DAKERA_API_KEY", "")
 
 memory = DakeraMemory(

@@ -61,13 +61,13 @@ ruff format --check .
 Some scenarios require a running Dakera instance. Start one locally with Docker:
 
 ```bash
-docker run -p 3300:3300 ghcr.io/dakera-ai/dakera:latest
+docker run -p 3000:3000 ghcr.io/dakera-ai/dakera:latest
 ```
 
 Then set the server URL in your test environment:
 
 ```bash
-export DAKERA_SERVER_URL=http://localhost:3300
+export DAKERA_SERVER_URL=http://localhost:3000
 pytest tests/integration/ -v
 ```
 

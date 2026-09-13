@@ -4,7 +4,7 @@ Indexes documents into Dakera's server-side vector store (no local
 embeddings needed) and retrieves the most relevant chunks for a query.
 
 Usage:
-    export DAKERA_API_URL="http://localhost:3300"
+    export DAKERA_API_URL="http://localhost:3000"
     export DAKERA_API_KEY="dk-..."          # optional
     pip install langchain-dakera langchain-core
     python rag_pipeline.py
@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 
 from langchain_dakera import DakeraVectorStore
 
-api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3300")
+api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3000")
 api_key = os.environ.get("DAKERA_API_KEY", "")
 
 store = DakeraVectorStore(
