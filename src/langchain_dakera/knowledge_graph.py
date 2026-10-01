@@ -53,17 +53,20 @@ class DakeraKnowledgeGraph:
         }
 
     def link(
-        self, source_id: str, target_id: str, edge_type: str = "linked_by"
+        self, source_id: str, target_id: str, *, label: str | None = None
     ) -> dict[str, Any]:
-        """Link two memories in the knowledge graph."""
+        """Link two of this agent's memories (``POST /v1/memories/{id}/links``).
+
+        The server records every explicit link as ``linked_by``; ``label`` is
+        an optional human-readable note stored with it.
+        """
         result = self._client.memory_link(
-            source_id=source_id, target_id=target_id, edge_type=edge_type
+            source_id, target_id, agent_id=self._agent_id, label=label
         )
         return {
-            "edge_id": result.edge.id,
-            "source_id": result.edge.source_id,
-            "target_id": result.edge.target_id,
-            "edge_type": result.edge.edge_type.value,
+            "from_id": result.from_id,
+            "to_id": result.to_id,
+            "edge_type": result.edge_type,
         }
 
     def export(self, format: str = "json") -> dict[str, Any]:
@@ -85,30 +88,30 @@ class DakeraKnowledgeGraph:
         }
 
     def summarize(
-        self,
-        memory_ids: list[str],
-        *,
-        target_type: str | None = None,
-        dry_run: bool = False,
+        self, memory_ids: list[str], *, target_type: str | None = None
     ) -> dict[str, Any]:
-        """Summarize the given memories into one summary memory.
+        """Summarize the given memories into one new summary memory.
 
-        ``POST /v1/knowledge/summarize`` requires ``memory_ids``; the server
-        answers ``{"summary_memory", "source_count", ...}``.
+        ``POST /v1/knowledge/summarize`` needs at least two ``memory_ids`` and
+        always stores the summary (the server has no dry run); it answers
+        ``{"summary_memory", "source_count"}``.
         """
-        if not memory_ids:
-            raise ValueError("summarize() needs at least one memory id")
+        if len(memory_ids) < 2:
+            raise ValueError("summarize() needs at least two memory ids")
         return self._client.summarize(
-            self._agent_id, memory_ids=memory_ids, target_type=target_type, dry_run=dry_run
+            self._agent_id, memory_ids=memory_ids, target_type=target_type
         )
 
     def deduplicate(self) -> dict[str, Any]:
         """Find and merge duplicate entities in the knowledge graph."""
         return self._client.deduplicate(self._agent_id)
 
-    def build(self) -> dict[str, Any]:
-        """Build/rebuild the knowledge graph from agent memories."""
-        return self._client.knowledge_graph(self._agent_id)
+    def build(self, memory_id: str, depth: int | None = None) -> dict[str, Any]:
+        """Build the knowledge graph around one seed memory.
+
+        ``POST /v1/knowledge/graph`` needs ``memory_id``.
+        """
+        return self._client.knowledge_graph(self._agent_id, memory_id=memory_id, depth=depth)
 
     def full_graph(self) -> dict[str, Any]:
         """Get the complete knowledge graph with all relationships."""

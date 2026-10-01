@@ -121,8 +121,12 @@ class DakeraMemory(BaseMemory):
         top_k: int | None = None,
         min_importance: float | None = None,
         memory_type: str | None = None,
+        tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Recall memories with filtering by type and importance."""
+        """Recall memories with filtering by type, importance and tags.
+
+        ``tags`` keeps memories carrying at least one of the given tags.
+        """
         kwargs: dict[str, Any] = {}
         if top_k is not None:
             kwargs["top_k"] = top_k
@@ -130,6 +134,8 @@ class DakeraMemory(BaseMemory):
             kwargs["min_importance"] = min_importance
         if memory_type:
             kwargs["memory_type"] = memory_type
+        if tags:
+            kwargs["tags"] = tags
         result = self._get_client().recall(self.agent_id, query=query, **kwargs)
         return [
             {
@@ -185,11 +191,14 @@ class DakeraMemory(BaseMemory):
         *,
         top_k: int = 10,
         min_importance: float | None = None,
+        tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Semantic search across agent memories."""
+        """Semantic search across agent memories (``tags``: at least one of them)."""
         kwargs: dict[str, Any] = {"top_k": top_k}
         if min_importance is not None:
             kwargs["min_importance"] = min_importance
+        if tags:
+            kwargs["tags"] = tags
         result = self._get_client().search_memories(self.agent_id, query=query, **kwargs)
         return [
             {

@@ -2,17 +2,23 @@
 
 ## [0.3.0] - 2026-10-01
 
-Dakera server **v0.12.0** support. Requires the `dakera` Python SDK **0.13.0** or later;
+Dakera server **v0.12.0** support. Requires the `dakera` Python SDK **0.13.1** or later;
 works with Dakera server v0.12.0 and v0.11.108.
 
 ### Changed
-- Dependency: `dakera>=0.13.0` (was `>=0.8.6`).
-- `DakeraKnowledgeGraph.summarize()` now takes the `memory_ids` to summarize (plus
-  `target_type` and `dry_run`). `POST /v1/knowledge/summarize` requires them, so the old
-  no-argument call always failed with a 422. An empty list raises `ValueError`.
+- Dependency: `dakera>=0.13.1` (was `>=0.8.6`).
 - `DakeraVectorStore.ahybrid_search()` runs the hybrid search in a worker thread. It
   previously called `AsyncDakeraClient.hybrid_search()` without the query vector that
   method requires, and always raised `TypeError`.
+- `DakeraKnowledgeGraph.link(source_id, target_id, *, label=None)` sends the agent id the server
+  requires (every link was a 422 before) and returns the server's `{from_id, to_id, edge_type}`.
+  The `edge_type` argument is gone: the server records every explicit link as `linked_by`.
+- `DakeraKnowledgeGraph.summarize(memory_ids, *, target_type=None)` needs at least two ids and has
+  no `dry_run`: the server has no dry run and always stores the summary (dakera 0.13.1 raises on
+  `dry_run=True` rather than silently writing).
+- `DakeraKnowledgeGraph.build(memory_id, depth=None)`: the seed `memory_id` is required by the server.
+- `DakeraMemory.recall()` and `DakeraMemory.search()` take `tags` (memories carrying at least one
+  of them); dakera 0.13.1 forwards them to the server.
 
 ### Removed
 - `DakeraEntityExtractor.list_providers()`. It called `GET /v1/extract/providers`, which no

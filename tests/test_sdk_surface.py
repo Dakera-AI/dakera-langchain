@@ -134,9 +134,48 @@ def test_summarize_sends_memory_ids():
     client.summarize.return_value = {"summary_memory": {"id": "s"}, "source_count": 2}
     with patch("langchain_dakera.knowledge_graph.DakeraClient", return_value=client):
         kg = DakeraKnowledgeGraph(api_url="http://localhost:3000", agent_id="a")
-    kg.summarize(["m1", "m2"], dry_run=True)
-    client.summarize.assert_called_once_with(
-        "a", memory_ids=["m1", "m2"], target_type=None, dry_run=True
-    )
+    kg.summarize(["m1", "m2"])
+    client.summarize.assert_called_once_with("a", memory_ids=["m1", "m2"], target_type=None)
+    # The server needs two ids and has no dry run (it always stores the summary).
     with pytest.raises(ValueError):
-        kg.summarize([])
+        kg.summarize(["m1"])
+    with pytest.raises(TypeError):
+        kg.summarize(["m1", "m2"], dry_run=True)  # type: ignore[call-arg]
+
+
+def test_link_and_build_pass_the_agent_and_seed():
+    from dakera.models import GraphLinkResponse
+
+    from langchain_dakera import DakeraKnowledgeGraph
+
+    client = _spec_client()
+    client.memory_link.return_value = GraphLinkResponse.from_dict(
+        {"from_id": "m1", "to_id": "m2", "edge_type": "linked_by"}
+    )
+    client.knowledge_graph.return_value = {"root": {}, "total_nodes": 1}
+    with patch("langchain_dakera.knowledge_graph.DakeraClient", return_value=client):
+        kg = DakeraKnowledgeGraph(api_url="http://localhost:3000", agent_id="a")
+    assert kg.link("m1", "m2", label="why") == {
+        "from_id": "m1",
+        "to_id": "m2",
+        "edge_type": "linked_by",
+    }
+    client.memory_link.assert_called_once_with("m1", "m2", agent_id="a", label="why")
+    kg.build("m1")
+    client.knowledge_graph.assert_called_once_with("a", memory_id="m1", depth=None)
+
+
+def test_memory_recall_and_search_forward_tags():
+    from dakera.models import RecallResponse
+
+    from langchain_dakera import DakeraMemory
+
+    client = _spec_client()
+    client.recall.return_value = RecallResponse.from_dict({"memories": []})
+    client.search_memories.return_value = []
+    with patch("langchain_dakera.memory.DakeraClient", return_value=client):
+        mem = DakeraMemory(api_url="http://localhost:3000", agent_id="a")
+        assert mem.recall("q", tags=["work"]) == []
+        assert mem.search("q", tags=["work"]) == []
+    client.recall.assert_called_once_with("a", query="q", tags=["work"])
+    client.search_memories.assert_called_once_with("a", query="q", top_k=10, tags=["work"])
