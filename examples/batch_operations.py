@@ -43,7 +43,7 @@ queries = [
     "returns and refunds",
 ]
 
-results = memory.batch_search(queries, limit=2)
+results = memory.batch_recall(queries, top_k=2)
 for query, matches in zip(queries, results):
     print(f"\n  Query: '{query}'")
     for m in matches:

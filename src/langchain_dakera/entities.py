@@ -67,10 +67,11 @@ class DakeraEntityExtractor:
             namespace, extract_entities=extract_entities, entity_types=entity_types
         )
 
-    def list_providers(self) -> list[dict[str, Any]]:
-        """List available entity extraction providers."""
-        providers = self._client.list_extract_providers()
-        return [
-            {"name": p.name, "available": p.available, "models": p.models}
-            for p in providers
-        ]
+    def get_extractor(self, namespace: str) -> dict[str, Any]:
+        """Get the extraction provider configured for a namespace.
+
+        Reads ``GET /v1/namespaces/{namespace}/extractor``. This replaces
+        ``list_providers()``, which called ``GET /v1/extract/providers``, a route
+        no Dakera server serves (removed from the dakera SDK in 0.13.0).
+        """
+        return self._client.get_namespace_extractor(namespace)
