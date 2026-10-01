@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Callable, Iterable
 from typing import Any
@@ -199,17 +200,15 @@ class DakeraVectorStore(VectorStore):
         alpha: float = 0.5,
         **kwargs: Any,
     ) -> list[Document]:
-        """Async combined vector + BM25 search."""
-        results = await self._async_client.hybrid_search(
-            self._namespace, query=query, top_k=k, filter=filter, vector_weight=alpha, **kwargs
+        """Async combined vector + BM25 search.
+
+        Runs :meth:`hybrid_search` in a worker thread: ``AsyncDakeraClient.hybrid_search``
+        (dakera 0.13.0) requires a query ``vector``, while this store relies on the
+        server-side embedding, as the sync client allows.
+        """
+        return await asyncio.to_thread(
+            self.hybrid_search, query, k, filter=filter, alpha=alpha, **kwargs
         )
-        return [
-            Document(
-                page_content=r.content or "",
-                metadata={**(r.metadata or {}), "score": r.score, "id": r.id},
-            )
-            for r in results
-        ]
 
     @classmethod
     def from_texts(

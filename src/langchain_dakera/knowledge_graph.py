@@ -84,9 +84,23 @@ class DakeraKnowledgeGraph:
             "edge_count": result.edge_count,
         }
 
-    def summarize(self) -> dict[str, Any]:
-        """Generate a summary of the knowledge graph."""
-        return self._client.summarize(self._agent_id)
+    def summarize(
+        self,
+        memory_ids: list[str],
+        *,
+        target_type: str | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Summarize the given memories into one summary memory.
+
+        ``POST /v1/knowledge/summarize`` requires ``memory_ids``; the server
+        answers ``{"summary_memory", "source_count", ...}``.
+        """
+        if not memory_ids:
+            raise ValueError("summarize() needs at least one memory id")
+        return self._client.summarize(
+            self._agent_id, memory_ids=memory_ids, target_type=target_type, dry_run=dry_run
+        )
 
     def deduplicate(self) -> dict[str, Any]:
         """Find and merge duplicate entities in the knowledge graph."""

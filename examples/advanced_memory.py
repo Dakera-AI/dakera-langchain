@@ -24,29 +24,19 @@ memory = DakeraMemory(
 )
 
 print("--- Storing with different importance levels ---")
-memory.save_context(
-    {"input": "casual chat"},
-    {"output": "Just a greeting."},
-    importance=0.3,
-)
-memory.save_context(
-    {"input": "I'm allergic to peanuts"},
-    {"output": "Noted — peanut allergy."},
-    importance=0.95,
-)
-memory.save_context(
-    {"input": "My birthday is March 15"},
-    {"output": "I'll remember your birthday!"},
+memory.store("Human: casual chat\nAI: Just a greeting.", importance=0.3)
+memory.store("Human: I'm allergic to peanuts\nAI: Noted — peanut allergy.", importance=0.95)
+memory.store(
+    "Human: My birthday is March 15\nAI: I'll remember your birthday!",
     importance=0.8,
     tags=["personal", "birthday"],
 )
 
 print("--- Recall with importance threshold ---")
-results = memory.load_memory_variables(
-    {"input": "What important things do you know?"},
-    min_importance=0.7,
-)
-print(f"High-importance memories:\n{results['history']}")
+results = memory.recall("What important things do you know?", min_importance=0.7)
+print("High-importance memories:")
+for m in results:
+    print(f"  [{m['importance']:.2f}] {m['content'][:60]}")
 
 print("\n--- Agent tools: stats ---")
 agent = DakeraAgentTools(

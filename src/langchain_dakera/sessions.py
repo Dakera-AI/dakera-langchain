@@ -51,7 +51,10 @@ class DakeraSessionManager:
 
     def list_sessions(self, active_only: bool = False) -> list[dict[str, Any]]:
         """List sessions for this agent."""
-        sessions = self._client.list_sessions(self._agent_id, active_only=active_only)
+        raw: Any = self._client.list_sessions(self._agent_id, active_only=active_only)
+        # GET /v1/sessions answers {"sessions": [...], "total": n}; the SDK passes
+        # that envelope through, so unwrap it (a bare list is accepted too).
+        sessions = raw.get("sessions", []) if isinstance(raw, dict) else raw
         return [
             {
                 "id": s.get("session_id", s.get("id", "")),

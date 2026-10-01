@@ -50,5 +50,5 @@ for m in session_memories:
 sessions.end(summary="Helped user with password reset and API key location")
 print("\nSession ended.")
 
-all_sessions = sessions.list()
+all_sessions = sessions.list_sessions()
 print(f"\nTotal sessions: {len(all_sessions)}")

@@ -18,7 +18,6 @@ api_key = os.environ.get("DAKERA_API_KEY", "")
 store = DakeraVectorStore(
     api_url=api_url,
     api_key=api_key,
-    agent_id="langchain-hybrid-demo",
     namespace="docs",
 )
 
@@ -34,16 +33,16 @@ print("Indexing documents...")
 store.add_texts(documents)
 
 print("\n--- Vector search: 'memory safe language' ---")
-results = store.similarity_search("memory safe language", top_k=3)
-for r in results:
-    print(f"  [{r['score']:.3f}] {r['content'][:60]}")
+results = store.similarity_search("memory safe language", k=3)
+for doc in results:
+    print(f"  [{doc.metadata['score']:.3f}] {doc.page_content[:60]}")
 
 print("\n--- Hybrid search: 'Python web' (alpha=0.5) ---")
-results = store.hybrid_search("Python web", top_k=3, alpha=0.5)
-for r in results:
-    print(f"  [{r['score']:.3f}] {r['content'][:60]}")
+results = store.hybrid_search("Python web", k=3, alpha=0.5)
+for doc in results:
+    print(f"  [{doc.metadata['score']:.3f}] {(doc.page_content or '')[:60]}")
 
 print("\n--- Full-text BM25: 'Google concurrent' ---")
-results = store.fulltext_search("Google concurrent", top_k=3)
-for r in results:
-    print(f"  [{r['score']:.3f}] {r['content'][:60]}")
+results = store.fulltext_search("Google concurrent", k=3)
+for doc in results:
+    print(f"  [{doc.metadata['score']:.3f}] {(doc.page_content or '')[:60]}")
