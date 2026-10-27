@@ -68,6 +68,7 @@ with Dakera server v0.12.0 – v0.12.3 (the v0.12.3 additions are ignored by old
   no `curl`, so the service container has no in-container health check; the job polls `/health`
   from the runner instead.
 - `ruff format --check .` runs in CI; the whole repository is formatted.
+- The examples job is no longer `continue-on-error`: a broken example fails CI.
 
 ## [0.3.0] - 2026-10-01
 
