@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from dakera import RecallResponse
 
 from langchain_dakera import DakeraMemory
 
@@ -25,10 +26,9 @@ def test_memory_variables(memory):
 
 def test_load_memory_variables_recalls(memory):
     m, mock_client = memory
-    mem = MagicMock(content="User likes Python", id="m-1", score=0.9)
-    mock_recall = MagicMock()
-    mock_recall.memories = [mem]
-    mock_client.recall.return_value = mock_recall
+    mock_client.recall.return_value = RecallResponse.from_dict(
+        {"memories": [{"id": "m-1", "content": "User likes Python", "rank_score": 0.9}]}
+    )
     result = m.load_memory_variables({"input": "What do I like?"})
     assert "User likes Python" in result["history"]
 

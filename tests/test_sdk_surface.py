@@ -50,7 +50,14 @@ def test_list_sessions_unwraps_server_envelope():
         mgr = DakeraSessionManager(api_url="http://localhost:3000", agent_id="a")
     result = mgr.list_sessions()
     assert result == [
-        {"id": "sess_1", "agent_id": "a", "started_at": 1, "ended_at": None, "memory_count": 2}
+        {
+            "id": "sess_1",
+            "agent_id": "a",
+            "started_at": 1,
+            "ended_at": None,
+            "memory_count": 2,
+            "ended_reason": None,
+        }
     ]
     client.list_sessions.assert_called_once_with("a", active_only=False)
 
@@ -177,5 +184,137 @@ def test_memory_recall_and_search_forward_tags():
         mem = DakeraMemory(api_url="http://localhost:3000", agent_id="a")
         assert mem.recall("q", tags=["work"]) == []
         assert mem.search("q", tags=["work"]) == []
-    client.recall.assert_called_once_with("a", query="q", tags=["work"])
+    client.recall.assert_called_once_with(
+        "a", query="q", top_k=5, neighborhood_mode="separate", tags=["work"]
+    )
     client.search_memories.assert_called_once_with("a", query="q", top_k=10, tags=["work"])
+
+
+# --- Server v0.12.3 / dakera 0.14.1 ---------------------------------------------
+
+
+def _memory_with(client: DakeraClient):
+    from langchain_dakera import DakeraMemory
+
+    with patch("langchain_dakera.memory.DakeraClient", return_value=client):
+        return DakeraMemory(api_url="http://localhost:3000", agent_id="a", recall_k=2)
+
+
+def _recall_with_inline_context():
+    from dakera import RecallResponse
+
+    # A v0.12.3 server in neighborhood_mode="inline" appends session context after
+    # the ranked results; a v0.12.2 server does the same without marking it.
+    return RecallResponse.from_dict(
+        {
+            "memories": [
+                {"id": "m1", "content": "first", "rank_score": 0.9},
+                {"id": "m2", "content": "second", "rank_score": 0.8},
+                {"id": "n1", "content": "context", "score": 0.99, "retrieval": "neighborhood"},
+                {"id": "m3", "content": "unmarked extra", "rank_score": 0.1},
+            ]
+        }
+    )
+
+
+def test_recall_returns_at_most_top_k_ranked_results():
+    client = _spec_client()
+    client.recall.return_value = _recall_with_inline_context()
+    mem = _memory_with(client)
+    result = mem.recall("q", top_k=2, rerank=False)
+    assert [m["id"] for m in result] == ["m1", "m2"]
+    assert [m["score"] for m in result] == [0.9, 0.8]
+    client.recall.assert_called_once_with(
+        "a", query="q", top_k=2, neighborhood_mode="separate", rerank=False
+    )
+
+
+def test_load_memory_variables_keeps_neighbourhood_out_of_history():
+    client = _spec_client()
+    client.recall.return_value = _recall_with_inline_context()
+    mem = _memory_with(client)
+    assert mem.load_memory_variables({"input": "q"}) == {"history": "first\nsecond"}
+    client.recall.assert_called_once_with(
+        "a", query="q", top_k=2, min_importance=None, neighborhood_mode="separate"
+    )
+
+
+def test_batch_recall_caps_each_query():
+    client = _spec_client()
+    client.recall.return_value = _recall_with_inline_context()
+    mem = _memory_with(client)
+    assert [[m["id"] for m in r] for r in mem.batch_recall(["a", "b"], top_k=1)] == [
+        ["m1"],
+        ["m1"],
+    ]
+    client.recall.assert_called_with("a", query="b", top_k=1, neighborhood_mode="separate")
+
+
+def test_store_forwards_event_time():
+    client = _spec_client()
+    client.store_memory.return_value = {"id": "m1"}
+    mem = _memory_with(client)
+    mem.store("met Bob", event_time="2026-01-02T03:04:05Z")
+    client.store_memory.assert_called_once_with(
+        "a", content="met Bob", event_time="2026-01-02T03:04:05Z"
+    )
+
+
+def test_consolidate_sends_memory_ids():
+    client = _spec_client()
+    client.consolidate.return_value = {"consolidated_memory": {"id": "c"}}
+    mem = _memory_with(client)
+    mem.consolidate(["m1", "m2"], target_type="semantic")
+    client.consolidate.assert_called_once_with("a", memory_ids=["m1", "m2"], target_type="semantic")
+    with pytest.raises(ValueError):
+        mem.consolidate(["m1"])
+
+
+def test_session_start_idle_timeout_and_touch():
+    from dakera.models import SessionTouchResponse
+
+    client = _spec_client()
+    client.start_session.return_value = {"id": "urn:chat:42", "agent_id": "a"}
+    client.touch_session.return_value = SessionTouchResponse.from_dict(
+        {"session": {"id": "urn:chat:42"}, "session_state": "active"}
+    )
+    with patch("langchain_dakera.sessions.DakeraClient", return_value=client):
+        mgr = DakeraSessionManager(api_url="http://localhost:3000", agent_id="a")
+    assert mgr.start(idle_timeout_secs=0) == "urn:chat:42"
+    client.start_session.assert_called_once_with("a", metadata=None, idle_timeout_secs=0)
+    assert mgr.touch() == "active"
+    client.touch_session.assert_called_once_with("urn:chat:42")
+
+
+def test_session_memories_leave_out_derived_sub_memories():
+    client = _spec_client()
+    client.session_memories.return_value = [
+        {"id": "m1", "content": "Human: hi\nAI: hello", "tags": []},
+        {"id": "mem_s" + "0" * 24, "content": "Human: hi", "tags": ["dakera-curated"]},
+    ]
+    with patch("langchain_dakera.sessions.DakeraClient", return_value=client):
+        mgr = DakeraSessionManager(api_url="http://localhost:3000", agent_id="a")
+    assert [m["id"] for m in mgr.memories("s")] == ["m1"]
+    assert len(mgr.memories("s", include_derived=True)) == 2
+
+
+def test_agent_import_export_pass_agent_and_format():
+    from dakera.models import MemoryExportResponse, MemoryImportResponse
+
+    from langchain_dakera import DakeraAgentTools
+
+    client = _spec_client()
+    client.import_memories.return_value = MemoryImportResponse.from_dict(
+        {"imported": 1, "skipped": 0, "status": "done"}
+    )
+    client.export_memories.return_value = MemoryExportResponse(
+        data=[{"id": "m1"}], format="jsonl", count=1
+    )
+    with patch("langchain_dakera.agents.DakeraClient", return_value=client):
+        tools = DakeraAgentTools(api_url="http://localhost:3000", agent_id="a")
+    tools.import_memories([{"memory": "likes tea"}], format="mem0")
+    client.import_memories.assert_called_once_with(
+        [{"memory": "likes tea"}], format="mem0", agent_id="a"
+    )
+    assert tools.export_memories() == [{"id": "m1"}]
+    client.export_memories.assert_called_once_with(format="jsonl", agent_id="a")

@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.4.0] - 2026-10-27
+
+Dakera server **v0.12.3** support. Requires the `dakera` Python SDK **0.14.1** or later; works
+with Dakera server v0.12.0 – v0.12.3 (the v0.12.3 additions are ignored by older servers).
+
+### Added
+- `DakeraMemory.store(..., event_time=)`: when the memory's event happened (Unix seconds, an
+  RFC 3339 string or a timezone-aware `datetime`); the server keeps it as `_dakera_event_time` and
+  uses it for recency and `since` / `until`.
+- `DakeraMemory.recall(..., rerank=)` and a `score` (the server's `rank_score`) on each result.
+- `DakeraMemory.consolidate(memory_ids=None, *, target_type=None)` merges the given memories.
+- `DakeraSessionManager.start(..., idle_timeout_secs=)` and `touch()`: the server ends a session
+  after 4 h without activity by default. `get()` and `list_sessions()` return `ended_reason`;
+  `get()` also returns the session `summary`.
+- `DakeraAgentTools.import_memories(..., format=)` / `export_memories(format=)` (`jsonl`, `csv`,
+  `mem0`, `zep`).
+- `tests/test_integration.py`: live tests against a server, skipped unless `DAKERA_API_URL` is set.
+
+### Changed
+- Dependency: `dakera>=0.14.1` (was `>=0.13.1`).
+- `DakeraMemory` recalls (`load_memory_variables`, `recall()`, `batch_recall()`) return at most
+  `recall_k` / `top_k` ranked memories. A v0.12.3 server appends a session's neighbouring memories
+  to the results by default, so a recall could return more than `top_k` and put unranked context
+  into the prompt history; recalls now ask for `neighborhood_mode="separate"` and keep the ranked
+  results only (a v0.12.2 server's inline context is cut at `top_k`).
+- `DakeraSessionManager.memories()` leaves out the sentence sub-memories the server derives from
+  each stored memory (tagged `dakera-curated`), which `GET /v1/sessions/{id}/memories` lists next
+  to them; `include_derived=True` keeps them.
+
+### Fixed
+- `DakeraAgentTools.import_memories()` failed against every v0.12 server (the SDK posted JSON);
+  with dakera 0.14.1 it uploads the file the server reads. `jsonl` takes the records
+  `export_memories()` returns.
+
+### CI
+- Integration tests and examples run against `ghcr.io/dakera-ai/dakera:0.12.3`. That image ships
+  no `curl`, so the service container has no in-container health check; the job polls `/health`
+  from the runner instead.
+
 ## [0.3.0] - 2026-10-01
 
 Dakera server **v0.12.0** support. Requires the `dakera` Python SDK **0.13.1** or later;

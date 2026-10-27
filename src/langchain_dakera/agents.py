@@ -49,11 +49,18 @@ class DakeraAgentTools:
             for s in sess
         ]
 
-    def import_memories(self, memories: list[dict[str, Any]]) -> Any:
-        """Bulk import memories for this agent."""
-        return self._client.import_memories(memories, agent_id=self._agent_id)
+    def import_memories(self, memories: Any, *, format: str = "jsonl") -> Any:
+        """Bulk import memories into this agent (``POST /v1/import``).
 
-    def export_memories(self) -> list[dict[str, Any]]:
-        """Export all memories for this agent."""
-        result = self._client.export_memories(agent_id=self._agent_id)
+        ``jsonl`` takes memory records as :meth:`export_memories` returns them (each
+        with ``id``, ``content``, ``agent_id``, ``created_at`` and
+        ``last_accessed_at``); ``mem0`` takes ``[{"memory": "..."}, ...]``, ``zep``
+        ``[{"content": "..."}, ...]`` and ``csv`` the CSV text. Returns the import
+        job status (``imported_count``, ``skipped_count``, ``errors``).
+        """
+        return self._client.import_memories(memories, format=format, agent_id=self._agent_id)
+
+    def export_memories(self, *, format: str = "jsonl") -> list[dict[str, Any]]:
+        """Export all memories of this agent as dicts (``GET /v1/export``)."""
+        result = self._client.export_memories(format=format, agent_id=self._agent_id)
         return result.data
