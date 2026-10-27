@@ -113,3 +113,49 @@ def test_vector_store_similarity_search():
     docs = store.similarity_search("memory safe language", k=1)
     assert docs[0].page_content == "Rust provides memory safety"
     assert docs[0].metadata["lang"] == "rust"
+
+
+def _vector_store() -> DakeraVectorStore:
+    store = DakeraVectorStore(
+        api_url=API_URL, api_key=API_KEY, namespace=f"lc-it-vs-{uuid.uuid4().hex[:10]}"
+    )
+    store.add_texts(
+        [
+            "Rust provides memory safety without garbage collection.",
+            "FastAPI is a modern Python web framework built on Starlette.",
+            "Go is designed for concurrent systems programming at Google.",
+        ],
+        metadatas=[{"lang": "rust"}, {"lang": "python"}, {"lang": "go"}],
+        ids=["rust", "fastapi", "go"],
+    )
+    return store
+
+
+def test_vector_store_hybrid_search_weighs_both_signals():
+    store = _vector_store()
+    keyword = store.hybrid_search("Starlette", k=3, alpha=0.0)
+    assert keyword[0].metadata["id"] == "fastapi"
+    assert keyword[0].metadata["text_score"] == 1.0
+    assert keyword[0].page_content.startswith("FastAPI")
+    semantic = store.hybrid_search("memory safe language", k=1, alpha=1.0)
+    assert semantic[0].metadata["id"] == "rust"
+    filtered = store.hybrid_search("programming", k=3, filter={"lang": {"$eq": "go"}})
+    assert [d.metadata["id"] for d in filtered] == ["go"]
+
+
+def test_vector_store_fulltext_search_returns_text():
+    store = _vector_store()
+    docs = store.fulltext_search("Google concurrent", k=1)
+    assert docs[0].metadata["id"] == "go"
+    assert docs[0].metadata["text_found"] is True
+    assert docs[0].page_content.startswith("Go is designed")
+    filtered = store.fulltext_search("Python", filter={"lang": {"$eq": "python"}})
+    assert [d.metadata["id"] for d in filtered] == ["fastapi"]
+
+
+def test_vector_store_delete():
+    store = _vector_store()
+    assert store.delete(["rust"]) is True
+    ids = [d.metadata["id"] for d in store.similarity_search("memory safety", k=3)]
+    assert "rust" not in ids
+    assert store.fulltext_search("garbage collection") == []

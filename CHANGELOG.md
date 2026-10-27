@@ -16,28 +16,58 @@ with Dakera server v0.12.0 – v0.12.3 (the v0.12.3 additions are ignored by old
   `get()` also returns the session `summary`.
 - `DakeraAgentTools.import_memories(..., format=)` / `export_memories(format=)` (`jsonl`, `csv`,
   `mem0`, `zep`).
+- `DakeraVectorStore.delete(ids)` (removes the documents from the vector and the BM25 index;
+  `adelete` comes with it), and `fetch_k=` on `hybrid_search` / `fulltext_search`.
+- `classic` extra (`pip install "langchain-dakera[classic]"`) for the LangChain 1.x legacy chains.
 - `tests/test_integration.py`: live tests against a server, skipped unless `DAKERA_API_URL` is set.
 
 ### Changed
 - Dependency: `dakera>=0.14.1` (was `>=0.13.1`).
 - `DakeraMemory` recalls (`load_memory_variables`, `recall()`, `batch_recall()`) return at most
-  `recall_k` / `top_k` ranked memories. A v0.12.3 server appends a session's neighbouring memories
-  to the results by default, so a recall could return more than `top_k` and put unranked context
+  `recall_k` / `top_k` ranked memories. A v0.12.3 server can append a session's neighbouring
+  memories to the results, so a recall could return more than `top_k` and put unranked context
   into the prompt history; recalls now ask for `neighborhood_mode="separate"` and keep the ranked
   results only (a v0.12.2 server's inline context is cut at `top_k`).
+- `DakeraMemory` recalls no longer repeat a text: the server may recall the sentence
+  sub-memories it derives from a stored turn next to the turn itself, and of a memory and its
+  derived sentences only the best ranked is kept.
+- `DakeraVectorStore.hybrid_search()` blends semantic similarity and BM25 as `alpha` says. The
+  server's `/hybrid` route blends in vector similarity only when given a query vector, which a
+  store using server-side embedding does not have, so it was BM25-only and `alpha` had no
+  effect. The semantic candidates (`fetch_k`, default `max(4·k, 20)`) are now scored
+  `alpha · cosine + (1 − alpha) · normalised BM25`; results carry `vector_score` / `text_score`.
 - `DakeraSessionManager.memories()` leaves out the sentence sub-memories the server derives from
   each stored memory (tagged `dakera-curated`), which `GET /v1/sessions/{id}/memories` lists next
   to them; `include_derived=True` keeps them.
+- Examples use a fresh agent / namespace per run, show the 0.4.0 features (`event_time`,
+  filtered and reranked recall, consolidate, idle sessions and `touch`, hybrid `alpha`, an LCEL
+  RAG prompt) and need no LLM API key. README and CONTRIBUTING rewritten for LangChain 1.x, with
+  every component documented and every snippet run against a v0.12.3 server.
 
 ### Fixed
+- `DakeraMemory` was a plain pydantic model, not a LangChain `BaseMemory`, with
+  `langchain-core` 1.x (which removed `langchain_core.memory`); it now uses
+  `langchain_classic.base_memory.BaseMemory` when installed.
+- `DakeraVectorStore.fulltext_search()` returned documents with an empty `page_content` (the
+  server's BM25 route answers ids and scores only); the text and metadata are now read from the
+  semantically nearest documents. A `filter` made it, and the BM25 part of `hybrid_search`,
+  match nothing, as the BM25 index keeps no metadata; the filter is now applied through the
+  semantic search.
+- `DakeraVectorStore(embedding_model=...)` was stored but never sent; writes and queries now use
+  that model.
 - `DakeraAgentTools.import_memories()` failed against every v0.12 server (the SDK posted JSON);
   with dakera 0.14.1 it uploads the file the server reads. `jsonl` takes the records
   `export_memories()` returns.
+- Docstrings: `DakeraKnowledgeGraph.deduplicate()` merges duplicate memories (not entities);
+  `DakeraMemory.consolidate()` names the memories the server refuses to consolidate.
+- Removed stray local tool files from the repository (`ruvector.db`, `.claude-flow/`); added
+  the MIT `LICENSE` file the README links to.
 
 ### CI
 - Integration tests and examples run against `ghcr.io/dakera-ai/dakera:0.12.3`. That image ships
   no `curl`, so the service container has no in-container health check; the job polls `/health`
   from the runner instead.
+- `ruff format --check .` runs in CI; the whole repository is formatted.
 
 ## [0.3.0] - 2026-10-01
 

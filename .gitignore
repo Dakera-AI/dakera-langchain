@@ -15,3 +15,7 @@ build/
 *.pem
 *.p12
 credentials.json
+
+# Local agent-tool state (never commit)
+.claude-flow/
+ruvector.db

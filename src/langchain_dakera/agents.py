@@ -23,7 +23,10 @@ class DakeraAgentTools:
         return self._client.agent_stats(self._agent_id)
 
     def memories(self, *, limit: int = 50) -> list[dict[str, Any]]:
-        """List agent memories with pagination."""
+        """List the agent's memories, newest first (at most ``limit``).
+
+        The server's derived sentence sub-memories are not listed.
+        """
         mems = self._client.agent_memories(self._agent_id, limit=limit)
         return [
             {

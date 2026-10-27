@@ -8,16 +8,43 @@ from typing import Any
 from dakera import DakeraClient, RecalledMemory, RecallResponse
 from pydantic import Field
 
+# ``BaseMemory`` moved out of langchain-core in LangChain 1.0 (to langchain-classic,
+# with the legacy chains such as ``ConversationChain``). Use whichever is installed;
+# without either, DakeraMemory is a plain pydantic model with the same methods.
 try:
-    from langchain_core.memory import BaseMemory
+    from langchain_core.memory import BaseMemory  # langchain-core < 1.0
 except ImportError:
-    from pydantic import BaseModel as BaseMemory
+    try:
+        from langchain_classic.base_memory import BaseMemory  # LangChain >= 1.0
+    except ImportError:
+        from pydantic import BaseModel as BaseMemory
 
 
 class DakeraMemory(BaseMemory):
     """LangChain conversational memory backed by Dakera AI.
 
-    Supports memory types, tags, TTL, batch operations, and importance scoring.
+    Each conversation turn is stored as a memory of ``agent_id``; on the next turn
+    the ``recall_k`` memories most relevant to the input are recalled (decay-weighted
+    semantic search on the server) and injected into the prompt as ``memory_key``.
+    Memories persist across restarts and processes. Besides the LangChain memory
+    interface it offers direct :meth:`store`, :meth:`recall`, :meth:`search`,
+    :meth:`batch_recall`, :meth:`forget`, :meth:`update_importance` and
+    :meth:`consolidate`.
+
+    Args:
+        api_url: Dakera server URL, e.g. ``http://localhost:3000``.
+        api_key: Dakera API key (empty when the server runs without auth).
+        agent_id: The agent whose memories are stored and recalled.
+        recall_k: Memories recalled per turn.
+        min_importance: Recall only memories at least this important (``0`` = all).
+        memory_key: Prompt variable the recalled memories are injected as.
+        input_key: Input used as the recall query (default: the first input).
+        importance: Importance (0-1) of stored conversation turns.
+        memory_type: Memory type of stored turns (``episodic``, ``semantic``,
+            ``procedural`` or ``working``).
+        tags: Tags added to every stored turn.
+        ttl_seconds: Expiry of stored turns (default: never).
+        session_id: Session (see :class:`DakeraSessionManager`) the turns belong to.
     """
 
     api_url: str = Field(description="Dakera API base URL.")
@@ -42,8 +69,20 @@ class DakeraMemory(BaseMemory):
         Recalls ask for ``neighborhood_mode="separate"``, so a v0.12.3+ server keeps
         the session neighbourhood context out of ``memories``; a server up to
         v0.12.2 appends it inline (unmarked), so the list is cut at ``top_k`` too.
+
+        The server also derives sentence sub-memories from each stored memory and
+        may recall them next to it: of a memory and the sentences derived from it,
+        only the best ranked is kept, so the results do not repeat a text.
         """
-        return result.ranked[:top_k]
+        kept: list[RecalledMemory] = []
+        seen: set[str] = set()
+        for m in result.ranked[:top_k]:
+            # A memory and the sentences derived from it share one key: its id.
+            key = (m.metadata or {}).get("source_memory_id") or m.id
+            if key not in seen:
+                seen.add(key)
+                kept.append(m)
+        return kept
 
     def model_post_init(self, __context: Any) -> None:
         self._client = DakeraClient(self.api_url, api_key=self.api_key)
@@ -65,6 +104,7 @@ class DakeraMemory(BaseMemory):
         return str(next(iter(inputs.values()), ""))
 
     def load_memory_variables(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Recall the memories relevant to the input, one per line, as ``memory_key``."""
         query = self._get_query(inputs)
         if not query:
             return {self.memory_key: ""}
@@ -79,6 +119,7 @@ class DakeraMemory(BaseMemory):
         return {self.memory_key: history}
 
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
+        """Store the turn as one memory: ``"Human: <input>\nAI: <output>"``."""
         human = str(next(iter(inputs.values()), ""))
         ai = str(next(iter(outputs.values()), ""))
         kwargs: dict[str, Any] = {
@@ -113,6 +154,9 @@ class DakeraMemory(BaseMemory):
     ) -> Any:
         """Store a memory directly with full control over parameters.
 
+        Returns the server's answer (a dict with the new memory's ``id``; on a v0.12.3+
+        server also ``truncated`` / ``embedded_tokens`` when the content is longer than
+        the embedding model reads, and ``warnings`` naming ignored request fields).
         ``event_time`` is when the memory's event happened (Unix seconds, an RFC 3339
         string or a timezone-aware ``datetime``); the server (v0.12.3+) uses it for
         recency and ``since`` / ``until`` instead of the ingest time.
@@ -180,7 +224,7 @@ class DakeraMemory(BaseMemory):
         top_k: int = 5,
         min_importance: float | None = None,
     ) -> list[list[dict[str, Any]]]:
-        """Batch recall across multiple queries."""
+        """Recall for several queries; one list (at most ``top_k`` ranked memories) per query."""
         client = self._get_client()
         results = []
         for q in queries:
@@ -219,7 +263,12 @@ class DakeraMemory(BaseMemory):
         min_importance: float | None = None,
         tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Semantic search across agent memories (``tags``: at least one of them)."""
+        """Search the agent's memories (``POST /v1/memory/search``), best first.
+
+        ``tags`` keeps memories carrying at least one of them; ``score`` is the
+        server's search score. :meth:`recall` is the decay-weighted recall the
+        conversation memory itself uses.
+        """
         kwargs: dict[str, Any] = {"top_k": top_k}
         if min_importance is not None:
             kwargs["min_importance"] = min_importance
@@ -243,7 +292,8 @@ class DakeraMemory(BaseMemory):
 
         ``memory_ids`` picks the memories (at least two); without it the server
         merges up to 5 memories of the agent's most common type. ``target_type`` is
-        the memory type of the merged memory.
+        the memory type of the merged memory. The server refuses (``400``) memories
+        with a TTL, an attachment or user metadata (``metadata`` or ``event_time``).
         """
         kwargs: dict[str, Any] = {}
         if memory_ids is not None:

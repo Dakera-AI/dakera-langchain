@@ -26,12 +26,16 @@ keywords = ["langchain", "dakera", "memory", "vector", "ai", "rag"]
 dependencies = ["dakera>=0.14.1", "langchain-core>=0.1.0"]
 
 [project.optional-dependencies]
+# LangChain >= 1.0 moved BaseMemory and the legacy chains (ConversationChain, ...)
+# to langchain-classic; install it to plug DakeraMemory into those chains.
+classic = ["langchain-classic>=1.0"]
 dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "responses>=0.23.0",
-       "ruff>=0.1.0", "langchain-core>=0.1.0", "mypy>=1.0.0", "pip-audit>=2.0.0"]
+       "ruff>=0.1.0", "langchain-core>=0.1.0", "mypy>=1.0.0", "pip-audit>=2.0.0",
+       "langchain-classic>=1.0"]
 
 [project.urls]
 Homepage = "https://github.com/dakera-ai/dakera-langchain"
-Documentation = "https://docs.dakera.ai/integrations/langchain"
+Documentation = "https://dakera.ai/integrations/langchain.html"
 Repository = "https://github.com/dakera-ai/dakera-langchain"
 
 [tool.setuptools.packages.find]

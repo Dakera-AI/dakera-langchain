@@ -9,7 +9,13 @@ from unittest.mock import create_autospec, patch
 
 import pytest
 from dakera import DakeraClient
-from dakera.models import FullTextSearchResult, HybridSearchResult, IndexStats
+from dakera.models import (
+    EmbeddingModel,
+    FullTextSearchResult,
+    IndexStats,
+    TextQueryResponse,
+    TextSearchResult,
+)
 
 from langchain_dakera import (
     DakeraEntityExtractor,
@@ -82,8 +88,7 @@ def test_start_session_reads_session_id():
 def test_namespace_stats_maps_index_stats():
     client = _spec_client()
     client.get_index_stats.return_value = IndexStats.from_dict(
-        {"vector_count": 7, "dimension": 384, "index_type": "hnsw",
-         "estimated_storage_bytes": 1024}
+        {"vector_count": 7, "dimension": 384, "index_type": "hnsw", "estimated_storage_bytes": 1024}
     )
     with patch("langchain_dakera.namespaces.DakeraClient", return_value=client):
         mgr = DakeraNamespaceManager(api_url="http://localhost:3000")
@@ -99,39 +104,145 @@ def test_namespace_stats_maps_index_stats():
 @pytest.fixture
 def store():
     client = _spec_client()
-    with patch("langchain_dakera.vectorstore.DakeraClient", return_value=client), patch(
-        "langchain_dakera.vectorstore.AsyncDakeraClient"
+    with (
+        patch("langchain_dakera.vectorstore.DakeraClient", return_value=client),
+        patch("langchain_dakera.vectorstore.AsyncDakeraClient"),
     ):
         s = DakeraVectorStore(api_url="http://localhost:3000", namespace="docs")
     yield s, client
 
 
-def test_hybrid_search_sends_text_query_without_vector(store):
-    s, client = store
-    client.hybrid_search.return_value = [HybridSearchResult(id="d1", score=0.8)]
-    docs = s.hybrid_search("python web", k=3, alpha=0.7)
-    client.hybrid_search.assert_called_once_with(
-        "docs", query="python web", top_k=3, filter=None, vector_weight=0.7
+def _text_results(*rows):
+    return TextQueryResponse(
+        results=[TextSearchResult(id=i, score=sc, text=t, metadata=md) for i, sc, t, md in rows],
+        model=EmbeddingModel.BGE_LARGE,
+        embedding_time_ms=1,
+        search_time_ms=1,
     )
-    assert docs[0].metadata == {"score": 0.8, "id": "d1"}
 
 
-def test_ahybrid_search_uses_server_side_embedding(store):
+def test_hybrid_search_fuses_semantic_and_bm25_scores(store):
     s, client = store
-    client.hybrid_search.return_value = [HybridSearchResult(id="d2", score=0.5)]
+    client.query_text.return_value = _text_results(
+        ("d1", 0.8, "semantic match", {"src": "a"}),
+        ("d2", 0.6, "python web keyword match", None),
+    )
+    client.fulltext_search.return_value = [FullTextSearchResult(id="d2", score=4.0)]
+
+    docs = s.hybrid_search("python web", k=2, alpha=0.25)
+
+    client.query_text.assert_called_once_with(
+        "docs", text="python web", top_k=20, filter=None, include_text=True, model=None
+    )
+    client.fulltext_search.assert_called_once_with("docs", query="python web", top_k=20)
+    # d2: 0.25 * 0.6 + 0.75 * 1.0 = 0.9 beats d1: 0.25 * 0.8 + 0 = 0.2
+    assert [d.metadata["id"] for d in docs] == ["d2", "d1"]
+    assert docs[0].page_content == "python web keyword match"
+    assert docs[0].metadata["score"] == pytest.approx(0.9)
+    assert docs[0].metadata["text_score"] == 1.0
+    assert docs[1].metadata == {
+        "src": "a",
+        "score": pytest.approx(0.2),
+        "vector_score": 0.8,
+        "text_score": 0.0,
+        "id": "d1",
+    }
+
+
+def test_hybrid_search_alpha_one_is_pure_vector_ranking(store):
+    s, client = store
+    client.query_text.return_value = _text_results(("d1", 0.9, "a", None), ("d2", 0.1, "b", None))
+    client.fulltext_search.return_value = [FullTextSearchResult(id="d2", score=9.0)]
+    docs = s.hybrid_search("q", k=2, alpha=1.0)
+    assert [d.metadata["id"] for d in docs] == ["d1", "d2"]
+
+
+def test_hybrid_search_filters_through_the_semantic_leg(store):
+    # The BM25 index of upsert-text documents has no metadata: a filtered BM25 query
+    # matches nothing, so the filter goes to query_text and BM25 looks further.
+    s, client = store
+    client.query_text.return_value = _text_results(("d1", 0.5, "a", {"lang": "py"}))
+    client.fulltext_search.return_value = [
+        FullTextSearchResult(id="other", score=8.0),
+        FullTextSearchResult(id="d1", score=2.0),
+    ]
+    flt = {"lang": {"$eq": "py"}}
+    docs = s.hybrid_search("q", k=1, alpha=0.0, filter=flt, fetch_k=10)
+    client.query_text.assert_called_once_with(
+        "docs", text="q", top_k=10, filter=flt, include_text=True, model=None
+    )
+    client.fulltext_search.assert_called_once_with("docs", query="q", top_k=50)
+    assert docs[0].metadata["text_score"] == 1.0  # normalised among the candidates
+
+
+def test_hybrid_search_rejects_alpha_out_of_range(store):
+    s, _ = store
+    with pytest.raises(ValueError):
+        s.hybrid_search("q", alpha=1.5)
+
+
+def test_ahybrid_search_runs_hybrid_search(store):
+    s, client = store
+    client.query_text.return_value = _text_results(("d2", 0.5, "rust", None))
+    client.fulltext_search.return_value = []
     docs = asyncio.run(s.ahybrid_search("rust safety", k=2))
-    client.hybrid_search.assert_called_once_with(
-        "docs", query="rust safety", top_k=2, filter=None, vector_weight=0.5
-    )
-    assert docs[0].metadata["id"] == "d2"
+    assert [d.metadata["id"] for d in docs] == ["d2"]
 
 
-def test_fulltext_search_signature(store):
+def test_fulltext_search_ranks_by_bm25_and_reads_text(store):
     s, client = store
-    client.fulltext_search.return_value = [FullTextSearchResult(id="d3", score=5.1)]
-    docs = s.fulltext_search("google", k=1)
-    client.fulltext_search.assert_called_once_with("docs", query="google", top_k=1, filter=None)
-    assert docs[0].metadata["score"] == 5.1
+    client.fulltext_search.return_value = [
+        FullTextSearchResult(id="d3", score=5.1),
+        FullTextSearchResult(id="d4", score=2.0),
+    ]
+    client.query_text.return_value = _text_results(("d3", 0.4, "Go at Google", {"lang": "go"}))
+    docs = s.fulltext_search("google", k=2)
+    client.fulltext_search.assert_called_once_with("docs", query="google", top_k=2)
+    assert docs[0].page_content == "Go at Google"
+    assert docs[0].metadata == {"lang": "go", "score": 5.1, "id": "d3", "text_found": True}
+    assert docs[1].page_content == ""
+    assert docs[1].metadata == {"score": 2.0, "id": "d4", "text_found": False}
+
+
+def test_fulltext_search_with_filter_keeps_matching_hits(store):
+    s, client = store
+    client.fulltext_search.return_value = [
+        FullTextSearchResult(id="other", score=9.0),
+        FullTextSearchResult(id="d5", score=3.0),
+    ]
+    client.query_text.return_value = _text_results(("d5", 0.3, "py doc", {"lang": "py"}))
+    docs = s.fulltext_search("py", k=1, filter={"lang": {"$eq": "py"}})
+    assert [d.metadata["id"] for d in docs] == ["d5"]
+
+
+def test_fulltext_search_without_hits_skips_semantic_lookup(store):
+    s, client = store
+    client.fulltext_search.return_value = []
+    assert s.fulltext_search("nothing") == []
+    client.query_text.assert_not_called()
+
+
+def test_embedding_model_is_sent_on_writes_and_queries():
+    client = _spec_client()
+    with (
+        patch("langchain_dakera.vectorstore.DakeraClient", return_value=client),
+        patch("langchain_dakera.vectorstore.AsyncDakeraClient"),
+    ):
+        s = DakeraVectorStore(
+            api_url="http://localhost:3000", namespace="docs", embedding_model="minilm"
+        )
+    client.query_text.return_value = _text_results()
+    s.add_texts(["hello"], ids=["h1"])
+    s.similarity_search("hello")
+    assert client.upsert_text.call_args.kwargs["model"] == "minilm"
+    assert client.query_text.call_args.kwargs["model"] == "minilm"
+
+
+def test_delete_removes_ids(store):
+    s, client = store
+    assert s.delete(["d1", "d2"]) is True
+    client.delete.assert_called_once_with("docs", ids=["d1", "d2"])
+    assert s.delete([]) is None
 
 
 def test_summarize_sends_memory_ids():
