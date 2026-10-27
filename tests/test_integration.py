@@ -39,8 +39,10 @@ def _memory(agent_id: str, **kwargs: object) -> DakeraMemory:
 
 def test_recall_of_an_agent_without_memories_is_empty():
     mem = _memory(_agent())
-    assert mem.recall("anything") == []
-    assert mem.load_memory_variables({"input": "anything"}) == {"history": ""}
+    # A query that a server before v0.12.3 answers with 404 NAMESPACE_NOT_FOUND.
+    assert mem.recall("What do I build?") == []
+    assert mem.load_memory_variables({"input": "What do I build?"}) == {"history": ""}
+    assert mem.search("What do I build?") == []
 
 
 def test_session_recall_returns_at_most_top_k():

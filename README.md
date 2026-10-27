@@ -519,10 +519,11 @@ http://localhost:3000/health`). This repository's CI maps it to 3300 — use whi
 every request: pass `api_key=` (the root key or a scoped key). A `403` means the key lacks the
 scope or namespace.
 
-**`NotFoundError` (404 `NAMESPACE_NOT_FOUND`) on the first recall.** Servers before v0.12.3
-answer a recall for an agent that has stored nothing with a 404; v0.12.3 returns no memories.
-Upgrade the server, or store a memory (e.g. one `save_context()`) before the first
-`load_memory_variables()`.
+**An empty history on the first turn.** An agent that has stored nothing recalls nothing:
+`load_memory_variables()` returns `""` and `recall()` / `search()` return `[]`. Servers before
+v0.12.3 answer such a recall with `404 NAMESPACE_NOT_FOUND` for some queries; `DakeraMemory`
+treats that answer as no memories, so a new conversation starts the same way on every v0.12
+server.
 
 **Fewer or more results than expected.** Recalls return at most `recall_k` / `top_k` ranked
 memories. A v0.12.3 server can add session-neighbourhood context; this package requests it

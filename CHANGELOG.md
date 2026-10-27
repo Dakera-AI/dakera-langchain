@@ -45,6 +45,11 @@ with Dakera server v0.12.0 – v0.12.3 (the v0.12.3 additions are ignored by old
   every component documented and every snippet run against a v0.12.3 server.
 
 ### Fixed
+- `DakeraMemory` on a server before v0.12.3: the first turn of a new agent raised
+  `NotFoundError` (`404 NAMESPACE_NOT_FOUND`). Such a server answers a recall or search of an
+  agent that has stored nothing with a 404 for some queries (e.g. "What do I build?");
+  `load_memory_variables()`, `recall()`, `batch_recall()` and `search()` now treat it as no
+  memories, like a v0.12.3 server. Other 404s are still raised.
 - `DakeraMemory` was a plain pydantic model, not a LangChain `BaseMemory`, with
   `langchain-core` 1.x (which removed `langchain_core.memory`); it now uses
   `langchain_classic.base_memory.BaseMemory` when installed.

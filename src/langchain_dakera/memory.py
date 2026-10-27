@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from dakera import DakeraClient, RecalledMemory, RecallResponse
+from dakera import DakeraClient, ErrorCode, NotFoundError, RecalledMemory, RecallResponse
 from pydantic import Field
 
 # ``BaseMemory`` moved out of langchain-core in LangChain 1.0 (to langchain-classic,
@@ -63,7 +63,7 @@ class DakeraMemory(BaseMemory):
     model_config = {"arbitrary_types_allowed": True}
 
     @staticmethod
-    def _ranked(result: RecallResponse, top_k: int) -> list[RecalledMemory]:
+    def _ranked(result: RecallResponse | None, top_k: int) -> list[RecalledMemory]:
         """The ranked results of a recall, at most ``top_k`` of them.
 
         Recalls ask for ``neighborhood_mode="separate"``, so a v0.12.3+ server keeps
@@ -76,6 +76,8 @@ class DakeraMemory(BaseMemory):
         """
         kept: list[RecalledMemory] = []
         seen: set[str] = set()
+        if result is None:
+            return kept
         for m in result.ranked[:top_k]:
             # A memory and the sentences derived from it share one key: its id.
             key = (m.metadata or {}).get("source_memory_id") or m.id
@@ -83,6 +85,20 @@ class DakeraMemory(BaseMemory):
                 seen.add(key)
                 kept.append(m)
         return kept
+
+    def _recall(self, query: str, **kwargs: Any) -> RecallResponse | None:
+        """Recall for this agent; ``None`` when the agent has stored nothing yet.
+
+        A server before v0.12.3 answers a recall of an agent that has no memories with
+        ``404 NAMESPACE_NOT_FOUND`` for some queries (the agent's namespace is created by
+        its first stored memory); v0.12.3 returns no memories.
+        """
+        try:
+            return self._get_client().recall(self.agent_id, query=query, **kwargs)
+        except NotFoundError as err:
+            if err.code != ErrorCode.NAMESPACE_NOT_FOUND:
+                raise
+            return None
 
     def model_post_init(self, __context: Any) -> None:
         self._client = DakeraClient(self.api_url, api_key=self.api_key)
@@ -108,9 +124,8 @@ class DakeraMemory(BaseMemory):
         query = self._get_query(inputs)
         if not query:
             return {self.memory_key: ""}
-        result = self._get_client().recall(
-            self.agent_id,
-            query=query,
+        result = self._recall(
+            query,
             top_k=self.recall_k,
             min_importance=self.min_importance if self.min_importance > 0 else None,
             neighborhood_mode="separate",
@@ -205,7 +220,7 @@ class DakeraMemory(BaseMemory):
             kwargs["tags"] = tags
         if rerank is not None:
             kwargs["rerank"] = rerank
-        result = self._get_client().recall(self.agent_id, query=query, **kwargs)
+        result = self._recall(query, **kwargs)
         return [
             {
                 "id": m.id,
@@ -225,13 +240,12 @@ class DakeraMemory(BaseMemory):
         min_importance: float | None = None,
     ) -> list[list[dict[str, Any]]]:
         """Recall for several queries; one list (at most ``top_k`` ranked memories) per query."""
-        client = self._get_client()
         results = []
         for q in queries:
             kwargs: dict[str, Any] = {"top_k": top_k, "neighborhood_mode": "separate"}
             if min_importance is not None:
                 kwargs["min_importance"] = min_importance
-            result = client.recall(self.agent_id, query=q, **kwargs)
+            result = self._recall(q, **kwargs)
             results.append(
                 [
                     {"id": m.id, "content": m.content, "importance": m.importance}
@@ -274,7 +288,13 @@ class DakeraMemory(BaseMemory):
             kwargs["min_importance"] = min_importance
         if tags:
             kwargs["tags"] = tags
-        result = self._get_client().search_memories(self.agent_id, query=query, **kwargs)
+        try:
+            result = self._get_client().search_memories(self.agent_id, query=query, **kwargs)
+        except NotFoundError as err:
+            # An agent that has stored nothing, on a server before v0.12.3 (see _recall).
+            if err.code != ErrorCode.NAMESPACE_NOT_FOUND:
+                raise
+            return []
         return [
             {
                 "id": m.get("id", ""),

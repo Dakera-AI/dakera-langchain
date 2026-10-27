@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from dakera import RecallResponse
+from dakera import ErrorCode, NotFoundError, RecallResponse
 
 from langchain_dakera import DakeraMemory
 
@@ -96,3 +96,30 @@ def test_is_a_langchain_base_memory_in_a_conversation_chain(memory):
     assert mock_client.store_memory.call_args.kwargs["content"] == (
         "Human: What do I build?\nAI: You build chatbots."
     )
+
+
+def _namespace_not_found() -> NotFoundError:
+    return NotFoundError(
+        "Namespace not found: _dakera_agent_agent-1",
+        status_code=404,
+        code=ErrorCode.NAMESPACE_NOT_FOUND,
+    )
+
+
+def test_agent_without_memories_on_an_older_server_recalls_nothing(memory):
+    # A server before v0.12.3 answers 404 NAMESPACE_NOT_FOUND for an agent that has
+    # stored nothing yet; the first turn of a new conversation must not fail.
+    m, mock_client = memory
+    mock_client.recall.side_effect = _namespace_not_found()
+    mock_client.search_memories.side_effect = _namespace_not_found()
+    assert m.load_memory_variables({"input": "What do I build?"}) == {"history": ""}
+    assert m.recall("What do I build?") == []
+    assert m.batch_recall(["a", "b"]) == [[], []]
+    assert m.search("What do I build?") == []
+
+
+def test_other_not_found_errors_are_raised(memory):
+    m, mock_client = memory
+    mock_client.recall.side_effect = NotFoundError("gone", status_code=404)
+    with pytest.raises(NotFoundError):
+        m.load_memory_variables({"input": "What do I build?"})
