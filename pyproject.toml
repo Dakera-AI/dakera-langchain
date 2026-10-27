@@ -37,6 +37,8 @@ dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "responses>=0.23.0",
 Homepage = "https://github.com/dakera-ai/dakera-langchain"
 Documentation = "https://dakera.ai/integrations/langchain.html"
 Repository = "https://github.com/dakera-ai/dakera-langchain"
+Changelog = "https://github.com/Dakera-AI/dakera-langchain/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Dakera-AI/dakera-langchain/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
