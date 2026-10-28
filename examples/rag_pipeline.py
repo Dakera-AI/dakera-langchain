@@ -1,18 +1,24 @@
-"""RAG pipeline using DakeraVectorStore with LangChain.
+"""Retrieval-augmented generation with DakeraVectorStore.
 
-Indexes documents into Dakera's server-side vector store (no local
-embeddings needed) and retrieves the most relevant chunks for a query.
+Indexes documents into Dakera (the server embeds them, no local embedding
+model or embedding API key), then builds a LangChain retriever and an LCEL
+pipeline that fills a RAG prompt with the retrieved context. Pipe the prompt
+into any chat model (e.g. ``ChatOpenAI``) to generate the answer.
 
-Usage:
-    export DAKERA_API_URL="http://localhost:3000"
-    export DAKERA_API_KEY="dk-..."          # optional
-    pip install langchain-dakera langchain-core
-    python rag_pipeline.py
+Run a Dakera server first (see the README), then:
+
+    pip install langchain-dakera
+    export DAKERA_API_URL=http://localhost:3000
+    export DAKERA_API_KEY=dk-mykey   # the server's root key; leave unset if auth is off
+    python examples/rag_pipeline.py
 """
 
 import os
+import uuid
 
 from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 
 from langchain_dakera import DakeraVectorStore
 
@@ -21,34 +27,50 @@ api_key = os.environ.get("DAKERA_API_KEY", "")
 
 store = DakeraVectorStore(
     api_url=api_url,
-    namespace="langchain-rag-demo",
     api_key=api_key,
+    namespace=f"langchain-rag-{uuid.uuid4().hex[:8]}",
 )
 
 docs = [
-    Document(page_content="Dakera is an AI memory platform with server-side embedding.",
-             metadata={"source": "overview"}),
-    Document(page_content="LangChain is a framework for building LLM applications.",
-             metadata={"source": "overview"}),
-    Document(page_content="Vector stores enable semantic search over document collections.",
-             metadata={"source": "concepts"}),
-    Document(page_content="RAG combines retrieval with generation for grounded answers.",
-             metadata={"source": "concepts"}),
+    Document(
+        page_content="Dakera is an AI agent memory server with server-side embedding.",
+        metadata={"source": "overview"},
+    ),
+    Document(
+        page_content="Dakera decays memory importance over time, weighted by access.",
+        metadata={"source": "concepts"},
+    ),
+    Document(
+        page_content="LangChain is a framework for building LLM applications.",
+        metadata={"source": "overview"},
+    ),
+    Document(
+        page_content="RAG combines retrieval with generation for grounded answers.",
+        metadata={"source": "concepts"},
+    ),
 ]
-
-print("Indexing documents...")
-ids = store.add_texts(
-    [d.page_content for d in docs],
-    metadatas=[d.metadata for d in docs],
-)
+ids = store.add_documents(docs)
 print(f"Indexed {len(ids)} documents.")
 
-print("\nSearching for: 'What is Dakera?'")
-results = store.similarity_search("What is Dakera?", k=2)
-for i, doc in enumerate(results, 1):
-    print(f"  {i}. [{doc.metadata.get('source', '')}] {doc.page_content}")
+print("\n--- Similarity search with scores: 'semantic search over memories' ---")
+for doc, score in store.similarity_search_with_score("semantic search over memories", k=2):
+    print(f"  [{score:.3f}] ({doc.metadata['source']}) {doc.page_content}")
 
-print("\nSearching with scores: 'semantic search'")
-scored = store.similarity_search_with_score("semantic search", k=2)
-for doc, score in scored:
-    print(f"  [{score:.3f}] {doc.page_content}")
+retriever = store.as_retriever(search_kwargs={"k": 2})
+prompt = ChatPromptTemplate.from_template(
+    "Answer from the context only.\n\nContext:\n{context}\n\nQuestion: {question}"
+)
+
+
+def format_docs(documents: list[Document]) -> str:
+    return "\n".join(f"- {d.page_content}" for d in documents)
+
+
+# prompt | ChatOpenAI(model="gpt-4o") | StrOutputParser() would generate the answer.
+rag = {"context": retriever | format_docs, "question": RunnablePassthrough()} | prompt
+
+print("\n--- RAG prompt for: 'How does Dakera handle memory decay?' ---")
+print(rag.invoke("How does Dakera handle memory decay?").to_string())
+
+store.delete(ids)
+print(f"\nDeleted {len(ids)} documents.")

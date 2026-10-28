@@ -9,8 +9,10 @@ from langchain_dakera import DakeraVectorStore
 
 @pytest.fixture
 def store():
-    with patch("langchain_dakera.vectorstore.DakeraClient") as MC, \
-         patch("langchain_dakera.vectorstore.AsyncDakeraClient"):
+    with (
+        patch("langchain_dakera.vectorstore.DakeraClient") as MC,
+        patch("langchain_dakera.vectorstore.AsyncDakeraClient"),
+    ):
         mock_client = MagicMock()
         MC.return_value = mock_client
         vs = DakeraVectorStore(api_url="http://localhost:3000", api_key="test", namespace="test-ns")

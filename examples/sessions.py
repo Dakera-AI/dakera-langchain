@@ -1,38 +1,39 @@
 """Session-scoped memory with LangChain and Dakera.
 
-Demonstrates starting a session, storing memories within it, and
-ending with a summary. Sessions group related memories together.
+Starts a session, stores conversation turns in it, keeps it alive, reads it
+back and ends it with a summary. Sessions group the memories of one
+conversation; the server ends a session after 4 h without activity by default.
 
-Usage:
-    export DAKERA_API_URL="http://localhost:3000"
-    python sessions.py
+Run a Dakera server first (see the README), then:
+
+    pip install langchain-dakera
+    export DAKERA_API_URL=http://localhost:3000
+    export DAKERA_API_KEY=dk-mykey   # the server's root key; leave unset if auth is off
+    python examples/sessions.py
 """
 
 import os
+import uuid
 
-from langchain_dakera import DakeraMemory
-from langchain_dakera.sessions import DakeraSessionManager
+from langchain_dakera import DakeraMemory, DakeraSessionManager
 
 api_url = os.environ.get("DAKERA_API_URL", "http://localhost:3000")
 api_key = os.environ.get("DAKERA_API_KEY", "")
+agent_id = f"langchain-sessions-{uuid.uuid4().hex[:8]}"
 
-sessions = DakeraSessionManager(
-    api_url=api_url,
-    api_key=api_key,
-    agent_id="langchain-session-demo",
-)
+sessions = DakeraSessionManager(api_url=api_url, api_key=api_key, agent_id=agent_id)
 
-session_id = sessions.start(metadata={"topic": "onboarding", "user": "alice"})
-print(f"Started session: {session_id}")
+# idle_timeout_secs (server v0.12.2+): end this session after 30 min without activity.
+session_id = sessions.start(metadata={"topic": "onboarding"}, idle_timeout_secs=1800)
+print(f"Started session {session_id}")
 
 memory = DakeraMemory(
     api_url=api_url,
     api_key=api_key,
-    agent_id="langchain-session-demo",
-    session_id=session_id,
+    agent_id=agent_id,
+    session_id=session_id,  # every stored turn belongs to the session
     importance=0.8,
 )
-
 memory.save_context(
     {"input": "How do I reset my password?"},
     {"output": "Go to Settings > Security > Reset Password."},
@@ -42,13 +43,18 @@ memory.save_context(
     {"output": "Under Settings > Developer > API Keys."},
 )
 
-session_memories = sessions.memories(session_id)
-print(f"\nMemories in session: {len(session_memories)}")
-for m in session_memories:
-    print(f"  - [{m['importance']:.1f}] {m['content'][:60]}")
+print(f"Touched the session: {sessions.touch()}")  # keeps an idle session open
 
-sessions.end(summary="Helped user with password reset and API key location")
-print("\nSession ended.")
+print("\n--- Memories in the session ---")
+for m in sessions.memories(session_id):
+    print(f"  [{m['importance']:.1f}] {m['content'].splitlines()[0]}")
 
-all_sessions = sessions.list_sessions()
-print(f"\nTotal sessions: {len(all_sessions)}")
+sessions.end(summary="Helped with password reset and API key location.")
+info = sessions.get(session_id)
+print(f"\nEnded: {info['summary']!r} ({info['memory_count']} memories)")
+
+# As a context manager the session starts on entry and ends on exit.
+with DakeraSessionManager(api_url=api_url, api_key=api_key, agent_id=agent_id) as follow_up:
+    print(f"\nFollow-up session {follow_up.active_session_id} is active")
+
+print(f"Sessions of the agent: {len(sessions.list_sessions())}")

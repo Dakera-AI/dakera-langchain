@@ -42,9 +42,7 @@ class DakeraKnowledgeGraph:
 
     def find_path(self, from_id: str, to_id: str) -> dict[str, Any]:
         """Find shortest path between two memory IDs."""
-        result = self._client.knowledge_path(
-            self._agent_id, from_id=from_id, to_id=to_id
-        )
+        result = self._client.knowledge_path(self._agent_id, from_id=from_id, to_id=to_id)
         return {
             "path": result.path,
             "hop_count": result.hop_count,
@@ -52,9 +50,7 @@ class DakeraKnowledgeGraph:
             "to_id": result.to_id,
         }
 
-    def link(
-        self, source_id: str, target_id: str, *, label: str | None = None
-    ) -> dict[str, Any]:
+    def link(self, source_id: str, target_id: str, *, label: str | None = None) -> dict[str, Any]:
         """Link two of this agent's memories (``POST /v1/memories/{id}/links``).
 
         The server records every explicit link as ``linked_by``; ``label`` is
@@ -87,9 +83,7 @@ class DakeraKnowledgeGraph:
             "edge_count": result.edge_count,
         }
 
-    def summarize(
-        self, memory_ids: list[str], *, target_type: str | None = None
-    ) -> dict[str, Any]:
+    def summarize(self, memory_ids: list[str], *, target_type: str | None = None) -> dict[str, Any]:
         """Summarize the given memories into one new summary memory.
 
         ``POST /v1/knowledge/summarize`` needs at least two ``memory_ids`` and
@@ -103,7 +97,10 @@ class DakeraKnowledgeGraph:
         )
 
     def deduplicate(self) -> dict[str, Any]:
-        """Find and merge duplicate entities in the knowledge graph."""
+        """Find the agent's duplicate memories and merge them (``POST /v1/knowledge/deduplicate``).
+
+        Returns ``{"groups", "duplicates_found", "duplicates_merged", ...}``.
+        """
         return self._client.deduplicate(self._agent_id)
 
     def build(self, memory_id: str, depth: int | None = None) -> dict[str, Any]:

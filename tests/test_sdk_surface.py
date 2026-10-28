@@ -9,7 +9,13 @@ from unittest.mock import create_autospec, patch
 
 import pytest
 from dakera import DakeraClient
-from dakera.models import FullTextSearchResult, HybridSearchResult, IndexStats
+from dakera.models import (
+    EmbeddingModel,
+    FullTextSearchResult,
+    IndexStats,
+    TextQueryResponse,
+    TextSearchResult,
+)
 
 from langchain_dakera import (
     DakeraEntityExtractor,
@@ -50,7 +56,14 @@ def test_list_sessions_unwraps_server_envelope():
         mgr = DakeraSessionManager(api_url="http://localhost:3000", agent_id="a")
     result = mgr.list_sessions()
     assert result == [
-        {"id": "sess_1", "agent_id": "a", "started_at": 1, "ended_at": None, "memory_count": 2}
+        {
+            "id": "sess_1",
+            "agent_id": "a",
+            "started_at": 1,
+            "ended_at": None,
+            "memory_count": 2,
+            "ended_reason": None,
+        }
     ]
     client.list_sessions.assert_called_once_with("a", active_only=False)
 
@@ -75,8 +88,7 @@ def test_start_session_reads_session_id():
 def test_namespace_stats_maps_index_stats():
     client = _spec_client()
     client.get_index_stats.return_value = IndexStats.from_dict(
-        {"vector_count": 7, "dimension": 384, "index_type": "hnsw",
-         "estimated_storage_bytes": 1024}
+        {"vector_count": 7, "dimension": 384, "index_type": "hnsw", "estimated_storage_bytes": 1024}
     )
     with patch("langchain_dakera.namespaces.DakeraClient", return_value=client):
         mgr = DakeraNamespaceManager(api_url="http://localhost:3000")
@@ -92,39 +104,145 @@ def test_namespace_stats_maps_index_stats():
 @pytest.fixture
 def store():
     client = _spec_client()
-    with patch("langchain_dakera.vectorstore.DakeraClient", return_value=client), patch(
-        "langchain_dakera.vectorstore.AsyncDakeraClient"
+    with (
+        patch("langchain_dakera.vectorstore.DakeraClient", return_value=client),
+        patch("langchain_dakera.vectorstore.AsyncDakeraClient"),
     ):
         s = DakeraVectorStore(api_url="http://localhost:3000", namespace="docs")
     yield s, client
 
 
-def test_hybrid_search_sends_text_query_without_vector(store):
-    s, client = store
-    client.hybrid_search.return_value = [HybridSearchResult(id="d1", score=0.8)]
-    docs = s.hybrid_search("python web", k=3, alpha=0.7)
-    client.hybrid_search.assert_called_once_with(
-        "docs", query="python web", top_k=3, filter=None, vector_weight=0.7
+def _text_results(*rows):
+    return TextQueryResponse(
+        results=[TextSearchResult(id=i, score=sc, text=t, metadata=md) for i, sc, t, md in rows],
+        model=EmbeddingModel.BGE_LARGE,
+        embedding_time_ms=1,
+        search_time_ms=1,
     )
-    assert docs[0].metadata == {"score": 0.8, "id": "d1"}
 
 
-def test_ahybrid_search_uses_server_side_embedding(store):
+def test_hybrid_search_fuses_semantic_and_bm25_scores(store):
     s, client = store
-    client.hybrid_search.return_value = [HybridSearchResult(id="d2", score=0.5)]
+    client.query_text.return_value = _text_results(
+        ("d1", 0.8, "semantic match", {"src": "a"}),
+        ("d2", 0.6, "python web keyword match", None),
+    )
+    client.fulltext_search.return_value = [FullTextSearchResult(id="d2", score=4.0)]
+
+    docs = s.hybrid_search("python web", k=2, alpha=0.25)
+
+    client.query_text.assert_called_once_with(
+        "docs", text="python web", top_k=20, filter=None, include_text=True, model=None
+    )
+    client.fulltext_search.assert_called_once_with("docs", query="python web", top_k=20)
+    # d2: 0.25 * 0.6 + 0.75 * 1.0 = 0.9 beats d1: 0.25 * 0.8 + 0 = 0.2
+    assert [d.metadata["id"] for d in docs] == ["d2", "d1"]
+    assert docs[0].page_content == "python web keyword match"
+    assert docs[0].metadata["score"] == pytest.approx(0.9)
+    assert docs[0].metadata["text_score"] == 1.0
+    assert docs[1].metadata == {
+        "src": "a",
+        "score": pytest.approx(0.2),
+        "vector_score": 0.8,
+        "text_score": 0.0,
+        "id": "d1",
+    }
+
+
+def test_hybrid_search_alpha_one_is_pure_vector_ranking(store):
+    s, client = store
+    client.query_text.return_value = _text_results(("d1", 0.9, "a", None), ("d2", 0.1, "b", None))
+    client.fulltext_search.return_value = [FullTextSearchResult(id="d2", score=9.0)]
+    docs = s.hybrid_search("q", k=2, alpha=1.0)
+    assert [d.metadata["id"] for d in docs] == ["d1", "d2"]
+
+
+def test_hybrid_search_filters_through_the_semantic_leg(store):
+    # The BM25 index of upsert-text documents has no metadata: a filtered BM25 query
+    # matches nothing, so the filter goes to query_text and BM25 looks further.
+    s, client = store
+    client.query_text.return_value = _text_results(("d1", 0.5, "a", {"lang": "py"}))
+    client.fulltext_search.return_value = [
+        FullTextSearchResult(id="other", score=8.0),
+        FullTextSearchResult(id="d1", score=2.0),
+    ]
+    flt = {"lang": {"$eq": "py"}}
+    docs = s.hybrid_search("q", k=1, alpha=0.0, filter=flt, fetch_k=10)
+    client.query_text.assert_called_once_with(
+        "docs", text="q", top_k=10, filter=flt, include_text=True, model=None
+    )
+    client.fulltext_search.assert_called_once_with("docs", query="q", top_k=50)
+    assert docs[0].metadata["text_score"] == 1.0  # normalised among the candidates
+
+
+def test_hybrid_search_rejects_alpha_out_of_range(store):
+    s, _ = store
+    with pytest.raises(ValueError):
+        s.hybrid_search("q", alpha=1.5)
+
+
+def test_ahybrid_search_runs_hybrid_search(store):
+    s, client = store
+    client.query_text.return_value = _text_results(("d2", 0.5, "rust", None))
+    client.fulltext_search.return_value = []
     docs = asyncio.run(s.ahybrid_search("rust safety", k=2))
-    client.hybrid_search.assert_called_once_with(
-        "docs", query="rust safety", top_k=2, filter=None, vector_weight=0.5
-    )
-    assert docs[0].metadata["id"] == "d2"
+    assert [d.metadata["id"] for d in docs] == ["d2"]
 
 
-def test_fulltext_search_signature(store):
+def test_fulltext_search_ranks_by_bm25_and_reads_text(store):
     s, client = store
-    client.fulltext_search.return_value = [FullTextSearchResult(id="d3", score=5.1)]
-    docs = s.fulltext_search("google", k=1)
-    client.fulltext_search.assert_called_once_with("docs", query="google", top_k=1, filter=None)
-    assert docs[0].metadata["score"] == 5.1
+    client.fulltext_search.return_value = [
+        FullTextSearchResult(id="d3", score=5.1),
+        FullTextSearchResult(id="d4", score=2.0),
+    ]
+    client.query_text.return_value = _text_results(("d3", 0.4, "Go at Google", {"lang": "go"}))
+    docs = s.fulltext_search("google", k=2)
+    client.fulltext_search.assert_called_once_with("docs", query="google", top_k=2)
+    assert docs[0].page_content == "Go at Google"
+    assert docs[0].metadata == {"lang": "go", "score": 5.1, "id": "d3", "text_found": True}
+    assert docs[1].page_content == ""
+    assert docs[1].metadata == {"score": 2.0, "id": "d4", "text_found": False}
+
+
+def test_fulltext_search_with_filter_keeps_matching_hits(store):
+    s, client = store
+    client.fulltext_search.return_value = [
+        FullTextSearchResult(id="other", score=9.0),
+        FullTextSearchResult(id="d5", score=3.0),
+    ]
+    client.query_text.return_value = _text_results(("d5", 0.3, "py doc", {"lang": "py"}))
+    docs = s.fulltext_search("py", k=1, filter={"lang": {"$eq": "py"}})
+    assert [d.metadata["id"] for d in docs] == ["d5"]
+
+
+def test_fulltext_search_without_hits_skips_semantic_lookup(store):
+    s, client = store
+    client.fulltext_search.return_value = []
+    assert s.fulltext_search("nothing") == []
+    client.query_text.assert_not_called()
+
+
+def test_embedding_model_is_sent_on_writes_and_queries():
+    client = _spec_client()
+    with (
+        patch("langchain_dakera.vectorstore.DakeraClient", return_value=client),
+        patch("langchain_dakera.vectorstore.AsyncDakeraClient"),
+    ):
+        s = DakeraVectorStore(
+            api_url="http://localhost:3000", namespace="docs", embedding_model="minilm"
+        )
+    client.query_text.return_value = _text_results()
+    s.add_texts(["hello"], ids=["h1"])
+    s.similarity_search("hello")
+    assert client.upsert_text.call_args.kwargs["model"] == "minilm"
+    assert client.query_text.call_args.kwargs["model"] == "minilm"
+
+
+def test_delete_removes_ids(store):
+    s, client = store
+    assert s.delete(["d1", "d2"]) is True
+    client.delete.assert_called_once_with("docs", ids=["d1", "d2"])
+    assert s.delete([]) is None
 
 
 def test_summarize_sends_memory_ids():
@@ -177,5 +295,137 @@ def test_memory_recall_and_search_forward_tags():
         mem = DakeraMemory(api_url="http://localhost:3000", agent_id="a")
         assert mem.recall("q", tags=["work"]) == []
         assert mem.search("q", tags=["work"]) == []
-    client.recall.assert_called_once_with("a", query="q", tags=["work"])
+    client.recall.assert_called_once_with(
+        "a", query="q", top_k=5, neighborhood_mode="separate", tags=["work"]
+    )
     client.search_memories.assert_called_once_with("a", query="q", top_k=10, tags=["work"])
+
+
+# --- Server v0.12.3 / dakera 0.14.1 ---------------------------------------------
+
+
+def _memory_with(client: DakeraClient):
+    from langchain_dakera import DakeraMemory
+
+    with patch("langchain_dakera.memory.DakeraClient", return_value=client):
+        return DakeraMemory(api_url="http://localhost:3000", agent_id="a", recall_k=2)
+
+
+def _recall_with_inline_context():
+    from dakera import RecallResponse
+
+    # A v0.12.3 server in neighborhood_mode="inline" appends session context after
+    # the ranked results; a v0.12.2 server does the same without marking it.
+    return RecallResponse.from_dict(
+        {
+            "memories": [
+                {"id": "m1", "content": "first", "rank_score": 0.9},
+                {"id": "m2", "content": "second", "rank_score": 0.8},
+                {"id": "n1", "content": "context", "score": 0.99, "retrieval": "neighborhood"},
+                {"id": "m3", "content": "unmarked extra", "rank_score": 0.1},
+            ]
+        }
+    )
+
+
+def test_recall_returns_at_most_top_k_ranked_results():
+    client = _spec_client()
+    client.recall.return_value = _recall_with_inline_context()
+    mem = _memory_with(client)
+    result = mem.recall("q", top_k=2, rerank=False)
+    assert [m["id"] for m in result] == ["m1", "m2"]
+    assert [m["score"] for m in result] == [0.9, 0.8]
+    client.recall.assert_called_once_with(
+        "a", query="q", top_k=2, neighborhood_mode="separate", rerank=False
+    )
+
+
+def test_load_memory_variables_keeps_neighbourhood_out_of_history():
+    client = _spec_client()
+    client.recall.return_value = _recall_with_inline_context()
+    mem = _memory_with(client)
+    assert mem.load_memory_variables({"input": "q"}) == {"history": "first\nsecond"}
+    client.recall.assert_called_once_with(
+        "a", query="q", top_k=2, min_importance=None, neighborhood_mode="separate"
+    )
+
+
+def test_batch_recall_caps_each_query():
+    client = _spec_client()
+    client.recall.return_value = _recall_with_inline_context()
+    mem = _memory_with(client)
+    assert [[m["id"] for m in r] for r in mem.batch_recall(["a", "b"], top_k=1)] == [
+        ["m1"],
+        ["m1"],
+    ]
+    client.recall.assert_called_with("a", query="b", top_k=1, neighborhood_mode="separate")
+
+
+def test_store_forwards_event_time():
+    client = _spec_client()
+    client.store_memory.return_value = {"id": "m1"}
+    mem = _memory_with(client)
+    mem.store("met Bob", event_time="2026-01-02T03:04:05Z")
+    client.store_memory.assert_called_once_with(
+        "a", content="met Bob", event_time="2026-01-02T03:04:05Z"
+    )
+
+
+def test_consolidate_sends_memory_ids():
+    client = _spec_client()
+    client.consolidate.return_value = {"consolidated_memory": {"id": "c"}}
+    mem = _memory_with(client)
+    mem.consolidate(["m1", "m2"], target_type="semantic")
+    client.consolidate.assert_called_once_with("a", memory_ids=["m1", "m2"], target_type="semantic")
+    with pytest.raises(ValueError):
+        mem.consolidate(["m1"])
+
+
+def test_session_start_idle_timeout_and_touch():
+    from dakera.models import SessionTouchResponse
+
+    client = _spec_client()
+    client.start_session.return_value = {"id": "urn:chat:42", "agent_id": "a"}
+    client.touch_session.return_value = SessionTouchResponse.from_dict(
+        {"session": {"id": "urn:chat:42"}, "session_state": "active"}
+    )
+    with patch("langchain_dakera.sessions.DakeraClient", return_value=client):
+        mgr = DakeraSessionManager(api_url="http://localhost:3000", agent_id="a")
+    assert mgr.start(idle_timeout_secs=0) == "urn:chat:42"
+    client.start_session.assert_called_once_with("a", metadata=None, idle_timeout_secs=0)
+    assert mgr.touch() == "active"
+    client.touch_session.assert_called_once_with("urn:chat:42")
+
+
+def test_session_memories_leave_out_derived_sub_memories():
+    client = _spec_client()
+    client.session_memories.return_value = [
+        {"id": "m1", "content": "Human: hi\nAI: hello", "tags": []},
+        {"id": "mem_s" + "0" * 24, "content": "Human: hi", "tags": ["dakera-curated"]},
+    ]
+    with patch("langchain_dakera.sessions.DakeraClient", return_value=client):
+        mgr = DakeraSessionManager(api_url="http://localhost:3000", agent_id="a")
+    assert [m["id"] for m in mgr.memories("s")] == ["m1"]
+    assert len(mgr.memories("s", include_derived=True)) == 2
+
+
+def test_agent_import_export_pass_agent_and_format():
+    from dakera.models import MemoryExportResponse, MemoryImportResponse
+
+    from langchain_dakera import DakeraAgentTools
+
+    client = _spec_client()
+    client.import_memories.return_value = MemoryImportResponse.from_dict(
+        {"imported": 1, "skipped": 0, "status": "done"}
+    )
+    client.export_memories.return_value = MemoryExportResponse(
+        data=[{"id": "m1"}], format="jsonl", count=1
+    )
+    with patch("langchain_dakera.agents.DakeraClient", return_value=client):
+        tools = DakeraAgentTools(api_url="http://localhost:3000", agent_id="a")
+    tools.import_memories([{"memory": "likes tea"}], format="mem0")
+    client.import_memories.assert_called_once_with(
+        [{"memory": "likes tea"}], format="mem0", agent_id="a"
+    )
+    assert tools.export_memories() == [{"id": "m1"}]
+    client.export_memories.assert_called_once_with(format="jsonl", agent_id="a")

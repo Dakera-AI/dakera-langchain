@@ -26,7 +26,11 @@ class DakeraNamespaceManager:
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Create a new namespace."""
+        """Create a namespace (``dimensions`` is required by the server).
+
+        Extra keyword arguments go to ``DakeraClient.create_namespace`` (e.g.
+        ``distance="cosine"``). Returns ``{"name", "dimensions", "vector_count"}``.
+        """
         result = self._client.create_namespace(
             name, dimensions=dimensions, index_type=index_type, metadata=metadata, **kwargs
         )
@@ -54,7 +58,7 @@ class DakeraNamespaceManager:
         ]
 
     def configure(self, name: str, **kwargs: Any) -> None:
-        """Update namespace configuration."""
+        """Update a namespace's configuration (e.g. ``dimension=1024, distance=...``)."""
         self._client.configure_namespace(name, **kwargs)
 
     def delete(self, name: str) -> None:
